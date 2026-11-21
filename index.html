@@ -7,61 +7,68 @@
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-
     <!-- شاشة تسجيل الدخول -->
     <div id="login-screen" class="screen active">
         <div class="login-card">
-            <h2>مرحباً بك في شات الأصدقاء 🚀</h2>
-            <p>أدخل اسمك والرمز السري للمجموعة</p>
-            <input type="text" id="username-input" placeholder="اسمك المستعار..." required>
-            <input type="password" id="room-code-input" placeholder="الرمز السري للغرفة..." required>
-            <button id="join-btn">دخول المحادثة</button>
-            <p id="login-error" class="error-msg"></p>
+            <h1>دردشة الأصدقاء 💬</h1>
+            <p>أدخل اسمك والرمز السري للدخول إلى المساحة الخاصة</p>
+
+            <input type="text" id="username-input" placeholder="اكتب اسمك هنا..." autocomplete="off">
+            <input type="password" id="room-code-input" placeholder="الرمز السري للدخول..." autocomplete="off">
+
+            <button type="button" id="join-btn">دخول</button>
+            <p id="login-error" class="error-text"></p>
         </div>
     </div>
 
-    <!-- شاشة الدردشة الرئيسية -->
+    <!-- شاشة الدردشة -->
     <div id="chat-screen" class="screen">
+        <!-- رأس الدردشة -->
         <header class="chat-header">
             <div class="header-info">
-                <h3>غرفة الأصدقاء 💬</h3>
-                <span id="current-user-badge"></span>
+                <h2>غرفة الأصدقاء 💬</h2>
+                <span id="current-user-badge" class="user-badge">متصل كـ: ---</span>
             </div>
+
             <div class="header-actions">
-                <button id="sound-toggle" title="تفعيل/كتم الصوت">🔔</button>
-                <button id="theme-toggle" title="تغيير المظهر">🌓</button>
-                <button id="logout-btn" title="خروج">خروج</button>
+                <button type="button" id="sound-toggle" class="icon-btn" title="تفعيل/كتم الصوت">🔔</button>
+                <button type="button" id="theme-toggle" class="icon-btn" title="الوضع الليلي/النهاري">🌗</button>
+                <button type="button" id="logout-btn" class="logout-btn">خروج</button>
             </div>
         </header>
-        <!-- شريط غرف المراسلة -->        <div class="rooms-bar">            <div id="rooms-list" class="rooms-list"></div>            <div class="add-room-box">                <input type="text" id="new-room-input" placeholder="غرفة جديدة...">                <button type="button" id="add-room-btn" title="إضافة غرفة">+</button>            </div>        </div>
-        <!-- شريط الأصدقاء المتصلين حالياً -->
-        <div class="online-bar">
-            <span class="online-label">🟢 متصل الآن:</span>
-            <div id="online-users-list" class="online-list"></div>
+
+        <!-- شريط غرف المراسلة -->
+        <div class="rooms-bar">
+            <div id="rooms-list" class="rooms-list"></div>
+            <div class="add-room-box">
+                <input type="text" id="new-room-input" placeholder="اسم الغرفة..." autocomplete="off">
+                <input type="password" id="new-room-pass" placeholder="رمز الغرفة (اختياري)" autocomplete="off">
+                <button type="button" id="add-room-btn" title="إضافة غرفة">+</button>
+            </div>
         </div>
 
-        <main id="messages-container" class="messages-area">
-            <!-- الرسائل والصور ستظهر هنا تلقائياً -->
-        </main>
+        <!-- شريط المتصلين حالياً -->
+        <div class="online-bar">
+            <span class="online-label">🟢 متصل الآن:</span>
+            <div id="online-users-list" class="online-users-list"></div>
+        </div>
 
-        <footer class="chat-input-area">
-            <form id="message-form">
-                <!-- زر مخفي لرفع الصور -->
-                <input type="file" id="image-input" accept="image/*" hidden>
-                <button type="button" id="image-btn" title="إرسال صورة">📷</button>
-                
-                <input type="text" id="message-input" placeholder="اكتب رسالتك هنا..." autocomplete="off">
-                <button type="submit" id="send-btn">إرسال ➤</button>
-            </form>
-        </footer>
+        <!-- منطقة الرسائل -->
+        <main id="messages-container" class="messages-container"></main>
+
+        <!-- شريط إرسال الرسائل والصور -->
+        <form id="message-form" class="message-form">
+            <button type="button" id="image-btn" class="image-btn" title="إرسال صورة">📷</button>
+            <input type="file" id="image-input" accept="image/*" hidden>
+
+            <input type="text" id="message-input" placeholder="اكتب رسالتك هنا..." autocomplete="off">
+            <button type="submit" id="send-btn" class="send-btn">إرسال ➤</button>
+        </form>
     </div>
-    <!-- مكتبات Firebase العادية (تعمل بدون مشاكل type="module") -->
+
+    <!-- مكتبات Firebase العادية -->
     <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
     <script src="main.js"></script>
-</body>
-</html>
-
-    <script type="module" src="main.js"></script>
 </body>
 </html>

@@ -23,6 +23,7 @@ const loginError = document.getElementById("login-error");
 const currentUserBadge = document.getElementById("current-user-badge");
 const roomsListEl = document.getElementById("rooms-list");
 const newRoomInput = document.getElementById("new-room-input");
+const newRoomPass = document.getElementById("new-room-pass");
 const addRoomBtn = document.getElementById("add-room-btn");
 const onlineUsersList = document.getElementById("online-users-list");
 const messagesContainer = document.getElementById("messages-container");
@@ -40,8 +41,8 @@ let soundEnabled = true;
 let isSending = false;
 let initialLoadComplete = false;
 const renderedMessageIds = new Set();
+let roomsMetaCache = {};
 
-// مراجع المستمعين الحاليين لإيقافهم عند تغيير الغرفة
 let activeMessagesRef = null;
 let activeOnlineRef = null;
 let activePresenceUserRef = null;
@@ -77,15 +78,15 @@ function enterChat(name) {
     switchRoom(currentRoom);
 }
 
-// 1. إدارة قائمة الغرف وإنشاء غرفة جديدة
+// 1. إدارة قائمة الغرف وإنشاء غرفة برمز سري اختياري
 function initRooms() {
     const roomsRef = db.ref("rooms_meta");
 
-    // التأكد من وجود الغرف الافتراضية
     DEFAULT_ROOMS.forEach((roomName) => {
-        roomsRef.child(sanitizeRoomKey(roomName)).once("value", (snap) => {
+        const key = sanitizeRoomKey(roomName);
+        roomsRef.child(key).once("value", (snap) => {
             if (!snap.exists()) {
-                roomsRef.child(sanitizeRoomKey(roomName)).set({ name: roomName });
+                roomsRef.child(key).set({ name: roomName, password: "" });
             }
         });
     });
@@ -93,16 +94,25 @@ function initRooms() {
     roomsRef.on("value", (snapshot) => {
         roomsListEl.innerHTML = "";
         const data = snapshot.val() || {};
-        const roomsArray = Object.values(data).map((r) => r.name).filter(Boolean);
+        roomsMetaCache = {};
 
-        roomsArray.forEach((roomName) => {
+        Object.entries(data).forEach(([key, roomObj]) => {
+            if (!roomObj || !roomObj.name) return;
+            roomsMetaCache[roomObj.name] = {
+                key,
+                name: roomObj.name,
+                password: roomObj.password || ""
+            };
+
+            const isLocked = Boolean(roomObj.password);
             const btn = document.createElement("button");
             btn.type = "button";
-            btn.className = "room-btn" + (roomName === currentRoom ? " active" : "");
-            btn.textContent = `# ${roomName}`;
+            btn.className = "room-btn" + (roomObj.name === currentRoom ? " active" : "");
+            btn.textContent = `${isLocked ? "🔒" : "#"} ${roomObj.name}`;
+
             btn.addEventListener("click", () => {
-                if (roomName !== currentRoom) {
-                    switchRoom(roomName);
+                if (roomObj.name !== currentRoom) {
+                    attemptSwitchRoom(roomObj.name);
                 }
             });
             roomsListEl.appendChild(btn);
@@ -117,16 +127,30 @@ newRoomInput.addEventListener("keydown", (e) => {
         createNewRoom();
     }
 });
+newRoomPass.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+        e.preventDefault();
+        createNewRoom();
+    }
+});
 
 function createNewRoom() {
     const roomName = newRoomInput.value.trim();
+    const roomPass = newRoomPass.value.trim();
     if (!roomName) return;
 
     const safeKey = sanitizeRoomKey(roomName);
     if (!safeKey) return;
 
-    db.ref(`rooms_meta/${safeKey}`).set({ name: roomName }).then(() => {
+    db.ref(`rooms_meta/${safeKey}`).set({
+        name: roomName,
+        password: roomPass
+    }).then(() => {
+        if (roomPass) {
+            sessionStorage.setItem(`room_unlocked_${safeKey}`, "1");
+        }
         newRoomInput.value = "";
+        newRoomPass.value = "";
         switchRoom(roomName);
     });
 }
@@ -135,9 +159,35 @@ function sanitizeRoomKey(name) {
     return name.replace(/[.#$/[\]]/g, "_").trim();
 }
 
-// 2. التبديل بين الغرف وتنظيف المستمعين السابقين
+// التحقق من رمز الغرفة قبل الدخول إليها
+function attemptSwitchRoom(roomName) {
+    const meta = roomsMetaCache[roomName];
+    const requiredPass = meta ? (meta.password || "") : "";
+    const safeKey = sanitizeRoomKey(roomName);
+
+    if (!requiredPass) {
+        switchRoom(roomName);
+        return;
+    }
+
+    if (sessionStorage.getItem(`room_unlocked_${safeKey}`) === "1") {
+        switchRoom(roomName);
+        return;
+    }
+
+    const enteredPass = prompt(`الغرفة "${roomName}" محمية برمز سري. أدخل الرمز:`);
+    if (enteredPass === null) return;
+
+    if (enteredPass.trim() === requiredPass) {
+        sessionStorage.setItem(`room_unlocked_${safeKey}`, "1");
+        switchRoom(roomName);
+    } else {
+        alert("رمز الغرفة غير صحيح!");
+    }
+}
+
+// 2. التبديل بين الغرف
 function switchRoom(roomName) {
-    // إزالة حضور المستخدم من الغرفة السابقة
     if (activePresenceUserRef) {
         activePresenceUserRef.onDisconnect().cancel();
         activePresenceUserRef.set(null);
@@ -153,12 +203,11 @@ function switchRoom(roomName) {
     localStorage.setItem("chat_room", currentRoom);
     currentUserBadge.textContent = `متصل كـ: ${currentUser} • غرفة: ${currentRoom}`;
 
-    // تحديث زر الغرفة النشطة
     document.querySelectorAll(".room-btn").forEach((btn) => {
-        btn.classList.toggle("active", btn.textContent === `# ${currentRoom}`);
+        const isActive = btn.textContent.endsWith(` ${currentRoom}`);
+        btn.classList.toggle("active", isActive);
     });
 
-    // تفريغ الرسائل المعروضة والبدء من جديد للغرفة المختارة
     messagesContainer.innerHTML = "";
     renderedMessageIds.clear();
     initialLoadComplete = false;
@@ -197,7 +246,7 @@ function setupRoomPresence(username, roomName) {
     });
 }
 
-// 4. إرسال رسالة نصية داخل الغرفة الحالية
+// 4. إرسال رسالة نصية
 messageForm.addEventListener("submit", (e) => {
     e.preventDefault();
     if (isSending) return;
@@ -219,7 +268,7 @@ messageForm.addEventListener("submit", (e) => {
     });
 });
 
-// 5. اختيار وضغط وإرسال الصور داخل الغرفة الحالية
+// 5. اختيار وضغط وإرسال الصور
 imageBtn.addEventListener("click", () => imageInput.click());
 
 imageInput.addEventListener("change", (e) => {
@@ -255,7 +304,7 @@ imageInput.addEventListener("change", (e) => {
     imageInput.value = "";
 });
 
-// 6. استقبال وحذف الرسائل في الغرفة الحالية
+// 6. استقبال وحذف الرسائل
 function listenForRoomMessages(roomName) {
     const safeRoom = sanitizeRoomKey(roomName);
     activeMessagesRef = db.ref(`rooms/${safeRoom}/messages`);
@@ -390,6 +439,7 @@ logoutBtn.addEventListener("click", () => {
         const safeRoom = sanitizeRoomKey(currentRoom);
         db.ref(`rooms/${safeRoom}/online_users/${currentUser}`).set(null);
     }
+    sessionStorage.clear();
     localStorage.removeItem("chat_username");
     location.reload();
 });
