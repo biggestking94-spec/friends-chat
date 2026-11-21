@@ -16,7 +16,6 @@ const USERS_PATH = "wa_users";
 const ROOMS_PATH = "wa_rooms";
 const DM_PATH = "wa_dm_messages";
 
-// أيقونات SVG داخلية للاستخدام في العناصر الديناميكية
 const SVG_ICONS = {
     lock: `<svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z"/></svg>`,
     trash: `<svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>`,
@@ -179,17 +178,21 @@ auth.onAuthStateChanged(async (user) => {
     }
 
     authUser = user;
-    const snap = await db.ref(`${USERS_PATH}/${user.uid}`).once("value");
-    const data = snap.val();
+    try {
+        const snap = await db.ref(`${USERS_PATH}/${user.uid}`).once("value");
+        const data = snap.val();
 
-    if (data && data.username) {
-        myProfile = { username: data.username, pin: data.pin || "" };
-        openMainApp();
-    } else {
-        setupUsernameInput.value = user.displayName || "";
-        setupPinInput.value = "";
-        profileError.textContent = "";
-        showScreen(profileScreen);
+        if (data && data.username) {
+            myProfile = { username: data.username, pin: data.pin || "" };
+            openMainApp();
+        } else {
+            setupUsernameInput.value = user.displayName || "";
+            setupPinInput.value = "";
+            profileError.textContent = "";
+            showScreen(profileScreen);
+        }
+    } catch (err) {
+        alert("تعذر قراءة ملف المستخدم: " + (err.message || err));
     }
 });
 
@@ -211,14 +214,17 @@ saveProfileBtn.addEventListener("click", async () => {
     profileError.textContent = "";
     myProfile = { username, pin };
 
-    await db.ref(`${USERS_PATH}/${authUser.uid}`).set({
-        uid: authUser.uid,
-        username,
-        pin,
-        updatedAt: firebase.database.ServerValue.TIMESTAMP
-    });
-
-    openMainApp();
+    try {
+        await db.ref(`${USERS_PATH}/${authUser.uid}`).set({
+            uid: authUser.uid,
+            username,
+            pin,
+            updatedAt: firebase.database.ServerValue.TIMESTAMP
+        });
+        openMainApp();
+    } catch (err) {
+        profileError.textContent = "تعذر حفظ الملف الشخصي: " + (err.message || err);
+    }
 });
 
 editProfileBtn.addEventListener("click", () => {
@@ -292,24 +298,30 @@ async function createRoom() {
     const pass = newRoomPass.value.trim();
     if (!name) return;
 
-    const ref = db.ref(ROOMS_PATH).push();
-    await ref.set({
-        id: ref.key,
-        name,
-        password: pass,
-        ownerUid: authUser.uid,
-        ownerName: myProfile.username,
-        createdAt: firebase.database.ServerValue.TIMESTAMP
-    });
+    try {
+        const ref = db.ref(ROOMS_PATH).push();
+        const roomData = {
+            id: ref.key,
+            name,
+            password: pass,
+            ownerUid: authUser.uid,
+            ownerName: myProfile.username || authUser.email || "مستخدم",
+            createdAt: firebase.database.ServerValue.TIMESTAMP
+        };
 
-    newRoomInput.value = "";
-    newRoomPass.value = "";
+        await ref.set(roomData);
 
-    if (pass) {
-        sessionStorage.setItem(`room_ok_${ref.key}`, "1");
+        newRoomInput.value = "";
+        newRoomPass.value = "";
+
+        if (pass) {
+            sessionStorage.setItem(`room_ok_${ref.key}`, "1");
+        }
+
+        openRoomChat(roomData);
+    } catch (err) {
+        alert("تعذر إنشاء الغرفة: " + (err.message || err));
     }
-
-    openRoomChat({ id: ref.key, name, password: pass, ownerUid: authUser.uid, ownerName: myProfile.username });
 }
 
 function listenRooms() {
@@ -317,6 +329,8 @@ function listenRooms() {
     db.ref(ROOMS_PATH).on("value", (snap) => {
         roomsCache = snap.val() || {};
         renderRoomsList();
+    }, (err) => {
+        console.error("Rooms listener error:", err);
     });
 }
 
@@ -340,9 +354,9 @@ function renderRoomsList() {
         item.className = "list-item" + (isActive ? " active" : "");
         item.innerHTML = `
             <div class="list-item-left">
-                <div class="room-avatar">${escapeHTML(room.name.charAt(0))}</div>
+                <div class="room-avatar">${escapeHTML((room.name || "#").charAt(0))}</div>
                 <div>
-                    <div class="list-item-title">${escapeHTML(room.name)}</div>
+                    <div class="list-item-title">${escapeHTML(room.name || "غرفة")}</div>
                     <small style="color:var(--text-muted)">${escapeHTML(room.ownerName || "")}</small>
                 </div>
             </div>
@@ -389,6 +403,8 @@ function listenUsers() {
     db.ref(USERS_PATH).on("value", (snap) => {
         usersCache = snap.val() || {};
         renderUsersList();
+    }, (err) => {
+        console.error("Users listener error:", err);
     });
 }
 
@@ -451,8 +467,8 @@ function getDmId(uid1, uid2) {
 
 function openRoomChat(room) {
     activeChat = { kind: "room", id: room.id, title: room.name };
-    chatAvatar.textContent = room.name.charAt(0) || "#";
-    currentChatTitle.textContent = room.name;
+    chatAvatar.textContent = (room.name || "#").charAt(0);
+    currentChatTitle.textContent = room.name || "غرفة";
     currentChatSubtitle.textContent = `غرفة • ${room.ownerName || ""}`;
 
     if (window.innerWidth <= 768) {
@@ -510,6 +526,8 @@ function startMessagesListener(path) {
         if (initialLoadComplete && data.senderUid !== authUser.uid && soundEnabled) {
             playBeep();
         }
+    }, (err) => {
+        console.error("Messages listener error:", err);
     });
 
     activeMessagesRef.on("child_removed", (snap) => {
@@ -519,16 +537,21 @@ function startMessagesListener(path) {
 }
 
 function getCurrentMessagesPath() {
-    if (!activeChat) return null;
+    if (!activeChat || !activeChat.id) return null;
     return activeChat.kind === "room"
         ? `${ROOMS_PATH}/${activeChat.id}/messages`
         : `${DM_PATH}/${activeChat.id}`;
 }
 
-// إرسال نص
-messageForm.addEventListener("submit", (e) => {
+// إرسال نص مع معالجة واضحة للأخطاء
+messageForm.addEventListener("submit", async (e) => {
     e.preventDefault();
-    if (isSending || !authUser) return;
+    if (isSending) return;
+
+    if (!authUser) {
+        alert("يجب تسجيل الدخول أولاً.");
+        return;
+    }
 
     if (!activeChat) {
         alert("اختر غرفة أو مستخدماً أولاً لإرسال رسالة.");
@@ -538,18 +561,27 @@ messageForm.addEventListener("submit", (e) => {
     const text = messageInput.value.trim();
     if (!text) return;
 
+    const path = getCurrentMessagesPath();
+    if (!path) return;
+
     isSending = true;
+    const originalText = text;
     messageInput.value = "";
 
-    db.ref(getCurrentMessagesPath()).push({
-        sender: myProfile.username,
-        senderUid: authUser.uid,
-        type: "text",
-        text,
-        timestamp: firebase.database.ServerValue.TIMESTAMP
-    }).finally(() => {
+    try {
+        await db.ref(path).push({
+            sender: myProfile.username || authUser.email || "مستخدم",
+            senderUid: authUser.uid,
+            type: "text",
+            text: originalText,
+            timestamp: firebase.database.ServerValue.TIMESTAMP
+        });
+    } catch (err) {
+        messageInput.value = originalText;
+        alert("لم يتم إرسال الرسالة: " + (err.message || "تحقق من قواعد Realtime Database وصلاحيات الدخول"));
+    } finally {
         isSending = false;
-    });
+    }
 });
 
 // إرسال صورة
@@ -565,10 +597,13 @@ imageInput.addEventListener("change", (e) => {
     const file = e.target.files[0];
     if (!file || !activeChat || !authUser) return;
 
+    const path = getCurrentMessagesPath();
+    if (!path) return;
+
     const reader = new FileReader();
     reader.onload = (ev) => {
         const img = new Image();
-        img.onload = () => {
+        img.onload = async () => {
             const canvas = document.createElement("canvas");
             const MAX_W = 600;
             const scale = MAX_W / img.width;
@@ -576,13 +611,17 @@ imageInput.addEventListener("change", (e) => {
             canvas.height = img.width > MAX_W ? img.height * scale : img.height;
             canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
 
-            db.ref(getCurrentMessagesPath()).push({
-                sender: myProfile.username,
-                senderUid: authUser.uid,
-                type: "image",
-                imageUrl: canvas.toDataURL("image/jpeg", 0.7),
-                timestamp: firebase.database.ServerValue.TIMESTAMP
-            });
+            try {
+                await db.ref(path).push({
+                    sender: myProfile.username || authUser.email || "مستخدم",
+                    senderUid: authUser.uid,
+                    type: "image",
+                    imageUrl: canvas.toDataURL("image/jpeg", 0.7),
+                    timestamp: firebase.database.ServerValue.TIMESTAMP
+                });
+            } catch (err) {
+                alert("تعذر إرسال الصورة: " + (err.message || err));
+            }
         };
         img.src = ev.target.result;
     };
@@ -615,15 +654,20 @@ micBtn.addEventListener("click", async () => {
                     return;
                 }
                 const reader = new FileReader();
-                reader.onloadend = () => {
-                    if (!activeChat || !authUser) return;
-                    db.ref(getCurrentMessagesPath()).push({
-                        sender: myProfile.username,
-                        senderUid: authUser.uid,
-                        type: "audio",
-                        audioUrl: reader.result,
-                        timestamp: firebase.database.ServerValue.TIMESTAMP
-                    });
+                reader.onloadend = async () => {
+                    const path = getCurrentMessagesPath();
+                    if (!path || !authUser) return;
+                    try {
+                        await db.ref(path).push({
+                            sender: myProfile.username || authUser.email || "مستخدم",
+                            senderUid: authUser.uid,
+                            type: "audio",
+                            audioUrl: reader.result,
+                            timestamp: firebase.database.ServerValue.TIMESTAMP
+                        });
+                    } catch (err) {
+                        alert("تعذر إرسال التسجيل الصوتي: " + (err.message || err));
+                    }
                 };
                 reader.readAsDataURL(blob);
             };
