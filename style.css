@@ -54,8 +54,9 @@ body {
     display: block;
 }
 
-/* شاشة الدخول */
-#login-screen.active {
+/* شاشات المصادقة واسم المستخدم */
+#auth-screen.active,
+#username-screen.active {
     display: flex;
     justify-content: center;
     align-items: center;
@@ -63,37 +64,38 @@ body {
     background: linear-gradient(135deg, var(--wa-teal), var(--wa-teal-dark));
 }
 
-.login-card {
+.auth-card {
     background-color: var(--bg-sidebar);
     color: var(--text-main);
     width: 100%;
-    max-width: 390px;
-    padding: 30px 24px;
+    max-width: 400px;
+    padding: 28px 22px;
     border-radius: 16px;
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.22);
     text-align: center;
 }
 
 .wa-logo {
-    font-size: 42px;
-    margin-bottom: 10px;
-}
-
-.login-card h1 {
-    font-size: 22px;
+    font-size: 40px;
     margin-bottom: 8px;
 }
 
-.login-card p {
-    font-size: 13px;
-    color: var(--text-muted);
-    margin-bottom: 20px;
+.auth-card h1,
+.auth-card h2 {
+    font-size: 21px;
+    margin-bottom: 6px;
 }
 
-.login-card input {
+.auth-card p {
+    font-size: 13px;
+    color: var(--text-muted);
+    margin-bottom: 18px;
+}
+
+.auth-card input {
     width: 100%;
-    padding: 12px 14px;
-    margin-bottom: 12px;
+    padding: 11px 14px;
+    margin-bottom: 10px;
     border: 1px solid var(--border-color);
     border-radius: 10px;
     background-color: var(--bg-input);
@@ -102,16 +104,56 @@ body {
     outline: none;
 }
 
-.login-card button {
+.auth-email-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 4px;
+}
+
+.primary-btn,
+.secondary-btn,
+.provider-btn {
     width: 100%;
-    padding: 12px;
+    padding: 11px;
     border: none;
     border-radius: 10px;
-    background-color: var(--wa-teal);
-    color: #fff;
-    font-size: 15px;
+    font-size: 14px;
     font-weight: bold;
     cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+
+.primary-btn {
+    background-color: var(--wa-teal);
+    color: #fff;
+}
+
+.secondary-btn {
+    background-color: var(--bg-header);
+    color: var(--text-main);
+    border: 1px solid var(--border-color);
+}
+
+.auth-divider {
+    margin: 16px 0 12px;
+    position: relative;
+    text-align: center;
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
+.google-btn {
+    background-color: #4285f4;
+    color: #fff;
+    margin-bottom: 8px;
+}
+
+.github-btn {
+    background-color: #24292e;
+    color: #fff;
 }
 
 .error-text {
@@ -130,7 +172,7 @@ body {
 }
 
 .sidebar {
-    width: 360px;
+    width: 365px;
     max-width: 100%;
     background-color: var(--bg-sidebar);
     border-left: 1px solid var(--border-color);
@@ -190,9 +232,14 @@ body {
     text-overflow: ellipsis;
 }
 
-.status-sub {
+.link-btn {
+    background: transparent;
+    border: none;
+    color: var(--wa-teal);
     font-size: 12px;
-    color: var(--text-muted);
+    cursor: pointer;
+    text-decoration: underline;
+    padding: 0;
 }
 
 .header-actions {
@@ -265,7 +312,7 @@ body {
     cursor: pointer;
 }
 
-/* قائمة الغرف */
+/* قائمة الغرف وزر الحذف */
 .rooms-list {
     flex: 1;
     overflow-y: auto;
@@ -279,6 +326,7 @@ body {
     border-bottom: 1px solid var(--border-color);
     cursor: pointer;
     transition: background-color 0.15s ease;
+    gap: 8px;
 }
 
 .room-item:hover {
@@ -295,6 +343,7 @@ body {
     align-items: center;
     gap: 10px;
     min-width: 0;
+    flex: 1;
 }
 
 .room-item-name {
@@ -305,8 +354,26 @@ body {
     text-overflow: ellipsis;
 }
 
-.room-lock-badge {
-    font-size: 13px;
+.room-item-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+}
+
+.delete-room-btn {
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    font-size: 14px;
+    padding: 4px;
+    border-radius: 6px;
+    opacity: 0.7;
+}
+
+.delete-room-btn:hover {
+    opacity: 1;
+    background-color: rgba(229, 57, 53, 0.14);
 }
 
 /* المتصلون في الغرفة */
@@ -416,10 +483,6 @@ body {
     opacity: 0.75;
 }
 
-.delete-msg-btn:hover {
-    opacity: 1;
-}
-
 /* شريط الإرسال */
 .message-form {
     background-color: var(--bg-header);
@@ -485,7 +548,7 @@ body {
     color: #fff;
 }
 
-/* استجابة الهواتف (عرض الغرف أولاً ثم فتح المحادثة) */
+/* استجابة الهواتف */
 @media (max-width: 768px) {
     .sidebar {
         width: 100%;

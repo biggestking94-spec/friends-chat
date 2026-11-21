@@ -7,22 +7,48 @@
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <!-- شاشة تسجيل الدخول -->
-    <div id="login-screen" class="screen active">
-        <div class="login-card">
+    <!-- 1. شاشة تسجيل الدخول / إنشاء حساب -->
+    <div id="auth-screen" class="screen active">
+        <div class="auth-card">
             <div class="wa-logo">💬</div>
             <h1>دردشة الأصدقاء</h1>
-            <p>سجّل اسمك والرمز السري للدخول إلى غرفكم الخاصة</p>
+            <p>سجّل الدخول للمتابعة إلى غرفكم الخاصة</p>
 
-            <input type="text" id="username-input" placeholder="اكتب اسمك هنا..." autocomplete="off">
-            <input type="password" id="room-code-input" placeholder="الرمز السري للدخول..." autocomplete="off">
+            <input type="email" id="auth-email" placeholder="البريد الإلكتروني (Email)..." autocomplete="email">
+            <input type="password" id="auth-password" placeholder="كلمة المرور (Password)..." autocomplete="current-password">
 
-            <button type="button" id="join-btn">دخول</button>
-            <p id="login-error" class="error-text"></p>
+            <div class="auth-email-actions">
+                <button type="button" id="email-login-btn" class="primary-btn">تسجيل الدخول</button>
+                <button type="button" id="email-signup-btn" class="secondary-btn">حساب جديد</button>
+            </div>
+
+            <div class="auth-divider"><span>أو المتابعة عبر</span></div>
+
+            <button type="button" id="google-login-btn" class="provider-btn google-btn">
+                <span>🔵</span> المتابعة باستخدام Google
+            </button>
+            <button type="button" id="github-login-btn" class="provider-btn github-btn">
+                <span>🐙</span> المتابعة باستخدام GitHub
+            </button>
+
+            <p id="auth-error" class="error-text"></p>
         </div>
     </div>
 
-    <!-- شاشة التطبيق الرئيسية (أسلوب واتساب) -->
+    <!-- 2. شاشة إضافة / تعديل اسم المستخدم -->
+    <div id="username-screen" class="screen">
+        <div class="auth-card">
+            <div class="wa-logo">👤</div>
+            <h2>إعداد اسم المستخدم</h2>
+            <p>اختر الاسم الذي سيظهر لأصدقائك داخل الغرف والرسائل</p>
+
+            <input type="text" id="setup-username-input" placeholder="اكتب اسم المستخدم..." maxlength="24" autocomplete="off">
+            <button type="button" id="save-username-btn" class="primary-btn">إضافة ومتابعة</button>
+            <p id="username-error" class="error-text"></p>
+        </div>
+    </div>
+
+    <!-- 3. شاشة التطبيق الرئيسية (أسلوب واتساب) -->
     <div id="chat-screen" class="screen">
         <div class="wa-app">
             <!-- القائمة الجانبية: الغرف -->
@@ -32,7 +58,7 @@
                         <div class="avatar" id="user-avatar">👤</div>
                         <div>
                             <h3 id="sidebar-username">---</h3>
-                            <span class="status-sub">غرف الدردشة</span>
+                            <button type="button" id="edit-username-btn" class="link-btn">تغيير الاسم</button>
                         </div>
                     </div>
 
@@ -43,12 +69,12 @@
                     </div>
                 </header>
 
-                <!-- إنشاء غرفة جديدة (برمز اختياري) -->
+                <!-- إنشاء غرفة جديدة -->
                 <div class="create-room-panel">
                     <input type="text" id="new-room-input" placeholder="اسم غرفة جديدة..." autocomplete="off">
                     <div class="create-room-row">
                         <input type="password" id="new-room-pass" placeholder="رمز سري (اختياري)" autocomplete="off">
-                        <button type="button" id="add-room-btn">+ إنشاء</button>
+                        <button type="button" id="add-room-btn">+ إضافة</button>
                     </div>
                 </div>
 
@@ -63,7 +89,7 @@
                         <button type="button" id="back-to-rooms-btn" class="back-btn" title="العودة للغرف">➜</button>
                         <div class="room-avatar" id="room-avatar">#</div>
                         <div>
-                            <h3 id="current-room-title">عامة</h3>
+                            <h3 id="current-room-title">اختر غرفة</h3>
                             <div id="online-users-list" class="online-inline"></div>
                         </div>
                     </div>
@@ -72,7 +98,7 @@
                 <!-- الرسائل -->
                 <main id="messages-container" class="messages-container"></main>
 
-                <!-- شريط الإرسال (نص + صورة + تسجيل صوتي) -->
+                <!-- شريط الإرسال -->
                 <form id="message-form" class="message-form">
                     <button type="button" id="image-btn" class="media-btn" title="إرسال صورة">📷</button>
                     <input type="file" id="image-input" accept="image/*" hidden>
@@ -88,6 +114,7 @@
     </div>
 
     <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
     <script src="main.js"></script>
 </body>

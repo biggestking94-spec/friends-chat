@@ -9,26 +9,33 @@ const firebaseConfig = {
 };
 
 firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth();
 const db = firebase.database();
 
-const SECRET_ROOM_CODE = "12345";
-const DEFAULT_ROOMS = []; // بداية نظيفة بدون غرف مسبقة
-
-// مفاتيح تخزين جديدة لتجنب أي بقايا قديمة
-const STORAGE_USER_KEY = "wa_chat_v2_username";
-const STORAGE_ROOM_KEY = "wa_chat_v2_room";
+const DB_USERS_PATH = "v2_users";
 const DB_ROOMS_META_PATH = "v2_rooms_meta";
 const DB_ROOMS_DATA_PATH = "v2_rooms";
 
-// عناصر الواجهة
-const loginScreen = document.getElementById("login-screen");
+// شاشات وعناصر المصادقة واسم المستخدم
+const authScreen = document.getElementById("auth-screen");
+const usernameScreen = document.getElementById("username-screen");
 const chatScreen = document.getElementById("chat-screen");
-const waApp = document.querySelector(".wa-app");
-const usernameInput = document.getElementById("username-input");
-const roomCodeInput = document.getElementById("room-code-input");
-const joinBtn = document.getElementById("join-btn");
-const loginError = document.getElementById("login-error");
 
+const authEmailInput = document.getElementById("auth-email");
+const authPasswordInput = document.getElementById("auth-password");
+const emailLoginBtn = document.getElementById("email-login-btn");
+const emailSignupBtn = document.getElementById("email-signup-btn");
+const googleLoginBtn = document.getElementById("google-login-btn");
+const githubLoginBtn = document.getElementById("github-login-btn");
+const authError = document.getElementById("auth-error");
+
+const setupUsernameInput = document.getElementById("setup-username-input");
+const saveUsernameBtn = document.getElementById("save-username-btn");
+const editUsernameBtn = document.getElementById("edit-username-btn");
+const usernameError = document.getElementById("username-error");
+
+// عناصر التطبيق الرئيسي
+const waApp = document.querySelector(".wa-app");
 const sidebarUsername = document.getElementById("sidebar-username");
 const userAvatar = document.getElementById("user-avatar");
 const currentRoomTitle = document.getElementById("current-room-title");
@@ -54,11 +61,13 @@ const soundToggle = document.getElementById("sound-toggle");
 const themeToggle = document.getElementById("theme-toggle");
 const logoutBtn = document.getElementById("logout-btn");
 
-let currentUser = localStorage.getItem(STORAGE_USER_KEY) || "";
-let currentRoom = localStorage.getItem(STORAGE_ROOM_KEY) || "";
+let authUser = null;
+let currentUser = "";
+let currentRoom = "";
 let soundEnabled = true;
 let isSending = false;
 let initialLoadComplete = false;
+let appInitialized = false;
 const renderedMessageIds = new Set();
 let roomsMetaCache = {};
 
@@ -66,51 +75,162 @@ let activeMessagesRef = null;
 let activeOnlineRef = null;
 let activePresenceUserRef = null;
 
-// متغيرات التسجيل الصوتي
+// تسجيل صوتي
 let mediaRecorder = null;
 let audioChunks = [];
 let isRecording = false;
 
-if (currentUser) {
-    enterChat(currentUser);
+function showScreen(screenEl) {
+    [authScreen, usernameScreen, chatScreen].forEach((s) => s.classList.remove("active"));
+    screenEl.classList.add("active");
 }
 
-joinBtn.addEventListener("click", () => {
-    const name = usernameInput.value.trim();
-    const code = roomCodeInput.value.trim();
+function getAuthErrorMessage(err) {
+    if (!err || !err.code) return "حدث خطأ غير متوقع.";
+    switch (err.code) {
+        case "auth/invalid-email":
+            return "صيغة البريد الإلكتروني غير صحيحة.";
+        case "auth/user-not-found":
+        case "auth/wrong-password":
+        case "auth/invalid-credential":
+            return "البريد الإلكتروني أو كلمة المرور غير صحيحة.";
+        case "auth/email-already-in-use":
+            return "هذا البريد الإلكتروني مسجل مسبقاً.";
+        case "auth/weak-password":
+            return "كلمة المرور يجب أن تكون 6 أحرف على الأقل.";
+        case "auth/popup-blocked":
+            return "تم حظر نافذة تسجيل الدخول، جرّب المتصفح مباشرة.";
+        default:
+            return err.message || "تعذر إتمام تسجيل الدخول.";
+    }
+}
 
-    if (!name) {
-        loginError.textContent = "يرجى كتابة اسمك أولاً.";
+// 1. تسجيل الدخول بالبريد وكلمة المرور
+emailLoginBtn.addEventListener("click", async () => {
+    authError.textContent = "";
+    const email = authEmailInput.value.trim();
+    const pass = authPasswordInput.value;
+    if (!email || !pass) {
+        authError.textContent = "يرجى إدخال البريد الإلكتروني وكلمة المرور.";
         return;
     }
-    if (code !== SECRET_ROOM_CODE) {
-        loginError.textContent = "الرمز السري غير صحيح!";
-        return;
+    try {
+        await auth.signInWithEmailAndPassword(email, pass);
+    } catch (err) {
+        authError.textContent = getAuthErrorMessage(err);
     }
-
-    localStorage.setItem(STORAGE_USER_KEY, name);
-    enterChat(name);
 });
 
-function enterChat(name) {
-    currentUser = name;
+emailSignupBtn.addEventListener("click", async () => {
+    authError.textContent = "";
+    const email = authEmailInput.value.trim();
+    const pass = authPasswordInput.value;
+    if (!email || !pass) {
+        authError.textContent = "يرجى إدخال البريد الإلكتروني وكلمة المرور لإنشاء حساب.";
+        return;
+    }
+    try {
+        await auth.createUserWithEmailAndPassword(email, pass);
+    } catch (err) {
+        authError.textContent = getAuthErrorMessage(err);
+    }
+});
+
+// 2. المتابعة باستخدام Google أو GitHub
+async function signInWithProvider(provider) {
+    authError.textContent = "";
+    try {
+        await auth.signInWithPopup(provider);
+    } catch (err) {
+        if (err.code === "auth/popup-blocked" || err.code === "auth/operation-not-supported-in-this-environment") {
+            await auth.signInWithRedirect(provider);
+        } else {
+            authError.textContent = getAuthErrorMessage(err);
+        }
+    }
+}
+
+googleLoginBtn.addEventListener("click", () => {
+    const provider = new firebase.auth.GoogleAuthProvider();
+    signInWithProvider(provider);
+});
+
+githubLoginBtn.addEventListener("click", () => {
+    const provider = new firebase.auth.GithubAuthProvider();
+    signInWithProvider(provider);
+});
+
+// مراقبة حالة المصادقة
+auth.onAuthStateChanged(async (user) => {
+    if (!user) {
+        authUser = null;
+        currentUser = "";
+        appInitialized = false;
+        cleanupRoomListeners();
+        showScreen(authScreen);
+        return;
+    }
+
+    authUser = user;
+    const snap = await db.ref(`${DB_USERS_PATH}/${user.uid}/username`).once("value");
+    const savedUsername = snap.val();
+
+    if (savedUsername) {
+        startChatSession(savedUsername);
+    } else {
+        setupUsernameInput.value = user.displayName || "";
+        usernameError.textContent = "";
+        showScreen(usernameScreen);
+    }
+});
+
+// 3. حفظ / إضافة اسم المستخدم
+saveUsernameBtn.addEventListener("click", async () => {
+    if (!authUser) return;
+    const name = setupUsernameInput.value.trim();
+    if (!name) {
+        usernameError.textContent = "يرجى كتابة اسم المستخدم أولاً.";
+        return;
+    }
+
+    usernameError.textContent = "";
+    await db.ref(`${DB_USERS_PATH}/${authUser.uid}`).set({
+        username: name,
+        email: authUser.email || "",
+        updatedAt: firebase.database.ServerValue.TIMESTAMP
+    });
+
+    startChatSession(name);
+});
+
+editUsernameBtn.addEventListener("click", () => {
+    setupUsernameInput.value = currentUser;
+    usernameError.textContent = "";
+    showScreen(usernameScreen);
+});
+
+function startChatSession(username) {
+    currentUser = username;
     sidebarUsername.textContent = currentUser;
     userAvatar.textContent = currentUser.charAt(0).toUpperCase() || "👤";
-
-    loginScreen.classList.remove("active");
-    chatScreen.classList.add("active");
+    showScreen(chatScreen);
 
     if (window.innerWidth <= 768) {
         waApp.classList.remove("chat-open");
     }
 
-    initRooms();
+    if (!appInitialized) {
+        appInitialized = true;
+        initRooms();
+    }
 
-    if (currentRoom) {
+    if (currentRoom && roomsMetaCache[currentRoom]) {
         switchRoom(currentRoom, false);
     } else {
+        currentRoom = "";
         currentRoomTitle.textContent = "اختر أو أنشئ غرفة";
         roomAvatar.textContent = "+";
+        onlineUsersList.innerHTML = "";
         messagesContainer.innerHTML = "";
     }
 }
@@ -119,18 +239,9 @@ backToRoomsBtn.addEventListener("click", () => {
     waApp.classList.remove("chat-open");
 });
 
-// 1. إدارة الغرف وإنشاء غرفة جديدة برمز سري اختياري
+// 4. إدارة الغرف (إضافة + حذف لمن أنشأها فقط + رمز اختياري)
 function initRooms() {
     const roomsRef = db.ref(DB_ROOMS_META_PATH);
-
-    DEFAULT_ROOMS.forEach((roomName) => {
-        const key = sanitizeRoomKey(roomName);
-        roomsRef.child(key).once("value", (snap) => {
-            if (!snap.exists()) {
-                roomsRef.child(key).set({ name: roomName, password: "" });
-            }
-        });
-    });
 
     roomsRef.on("value", (snapshot) => {
         roomsListEl.innerHTML = "";
@@ -139,7 +250,15 @@ function initRooms() {
 
         const entries = Object.entries(data);
         if (entries.length === 0) {
-            roomsListEl.innerHTML = `<p style="padding: 16px; font-size: 13px; color: var(--text-muted); text-align: center;">لا توجد غرف حالياً. أنشئ غرفتك الأولى من الأعلى!</p>`;
+            roomsListEl.innerHTML = `<p style="padding: 16px; font-size: 13px; color: var(--text-muted); text-align: center;">لا توجد غرف حالياً. أضف غرفتك الأولى من الأعلى!</p>`;
+            if (currentRoom) {
+                currentRoom = "";
+                cleanupRoomListeners();
+                currentRoomTitle.textContent = "اختر أو أنشئ غرفة";
+                roomAvatar.textContent = "+";
+                onlineUsersList.innerHTML = "";
+                messagesContainer.innerHTML = "";
+            }
             return;
         }
 
@@ -149,10 +268,13 @@ function initRooms() {
             roomsMetaCache[roomObj.name] = {
                 key,
                 name: roomObj.name,
-                password: roomObj.password || ""
+                password: roomObj.password || "",
+                createdBy: roomObj.createdBy || ""
             };
 
             const isLocked = Boolean(roomObj.password);
+            const canDeleteRoom = Boolean(authUser && roomObj.createdBy && roomObj.createdBy === authUser.uid);
+
             const item = document.createElement("div");
             item.className = "room-item" + (roomObj.name === currentRoom ? " active" : "");
             item.dataset.roomName = roomObj.name;
@@ -162,15 +284,37 @@ function initRooms() {
                     <div class="room-avatar">${escapeHTML(roomObj.name.charAt(0))}</div>
                     <span class="room-item-name">${escapeHTML(roomObj.name)}</span>
                 </div>
-                <span class="room-lock-badge">${isLocked ? "🔒" : ""}</span>
+                <div class="room-item-actions">
+                    <span>${isLocked ? "🔒" : ""}</span>
+                    ${canDeleteRoom ? `<button type="button" class="delete-room-btn" title="حذف الغرفة">🗑️</button>` : ""}
+                </div>
             `;
 
             item.addEventListener("click", () => {
                 attemptSwitchRoom(roomObj.name);
             });
 
+            if (canDeleteRoom) {
+                const delRoomBtn = item.querySelector(".delete-room-btn");
+                if (delRoomBtn) {
+                    delRoomBtn.addEventListener("click", (e) => {
+                        e.stopPropagation();
+                        deleteRoom(key, roomObj.name, roomObj.createdBy);
+                    });
+                }
+            }
+
             roomsListEl.appendChild(item);
         });
+
+        if (currentRoom && !roomsMetaCache[currentRoom]) {
+            currentRoom = "";
+            cleanupRoomListeners();
+            currentRoomTitle.textContent = "اختر أو أنشئ غرفة";
+            roomAvatar.textContent = "+";
+            onlineUsersList.innerHTML = "";
+            messagesContainer.innerHTML = "";
+        }
     });
 }
 
@@ -189,6 +333,7 @@ newRoomPass.addEventListener("keydown", (e) => {
 });
 
 function createNewRoom() {
+    if (!authUser) return;
     const roomName = newRoomInput.value.trim();
     const roomPass = newRoomPass.value.trim();
     if (!roomName) return;
@@ -198,7 +343,8 @@ function createNewRoom() {
 
     db.ref(`${DB_ROOMS_META_PATH}/${safeKey}`).set({
         name: roomName,
-        password: roomPass
+        password: roomPass,
+        createdBy: authUser.uid
     }).then(() => {
         if (roomPass) {
             sessionStorage.setItem(`room_unlocked_${safeKey}`, "1");
@@ -207,6 +353,31 @@ function createNewRoom() {
         newRoomPass.value = "";
         switchRoom(roomName, true);
     });
+}
+
+async function deleteRoom(safeKey, roomName, createdBy) {
+    if (!authUser || createdBy !== authUser.uid) {
+        alert("يمكن فقط لمن أنشأ هذه الغرفة حذفها.");
+        return;
+    }
+
+    const confirmed = confirm(`هل أنت متأكد من حذف الغرفة "${roomName}" وجميع رسائلها؟`);
+    if (!confirmed) return;
+
+    if (currentRoom === roomName) {
+        currentRoom = "";
+        cleanupRoomListeners();
+        currentRoomTitle.textContent = "اختر أو أنشئ غرفة";
+        roomAvatar.textContent = "+";
+        onlineUsersList.innerHTML = "";
+        messagesContainer.innerHTML = "";
+        if (window.innerWidth <= 768) {
+            waApp.classList.remove("chat-open");
+        }
+    }
+
+    await db.ref(`${DB_ROOMS_DATA_PATH}/${safeKey}`).remove();
+    await db.ref(`${DB_ROOMS_META_PATH}/${safeKey}`).remove();
 }
 
 function sanitizeRoomKey(name) {
@@ -239,20 +410,26 @@ function attemptSwitchRoom(roomName) {
     }
 }
 
-function switchRoom(roomName, openPanelOnMobile = true) {
+function cleanupRoomListeners() {
     if (activePresenceUserRef) {
         activePresenceUserRef.onDisconnect().cancel();
         activePresenceUserRef.set(null);
+        activePresenceUserRef = null;
     }
     if (activeMessagesRef) {
         activeMessagesRef.off();
+        activeMessagesRef = null;
     }
     if (activeOnlineRef) {
         activeOnlineRef.off();
+        activeOnlineRef = null;
     }
+}
+
+function switchRoom(roomName, openPanelOnMobile = true) {
+    cleanupRoomListeners();
 
     currentRoom = roomName;
-    localStorage.setItem(STORAGE_ROOM_KEY, currentRoom);
     currentRoomTitle.textContent = currentRoom;
     roomAvatar.textContent = currentRoom.charAt(0) || "#";
 
@@ -272,7 +449,7 @@ function switchRoom(roomName, openPanelOnMobile = true) {
     listenForRoomMessages(currentRoom);
 }
 
-// 2. المتصلون في الغرفة
+// 5. المتصلون في الغرفة
 function setupRoomPresence(username, roomName) {
     const safeRoom = sanitizeRoomKey(roomName);
     const connectedRef = db.ref(".info/connected");
@@ -302,10 +479,10 @@ function setupRoomPresence(username, roomName) {
     });
 }
 
-// 3. إرسال رسالة نصية
+// 6. إرسال رسالة نصية
 messageForm.addEventListener("submit", (e) => {
     e.preventDefault();
-    if (isSending || !currentRoom) return;
+    if (isSending || !currentRoom || !authUser) return;
 
     const text = messageInput.value.trim();
     if (!text) return;
@@ -316,6 +493,7 @@ messageForm.addEventListener("submit", (e) => {
     const safeRoom = sanitizeRoomKey(currentRoom);
     db.ref(`${DB_ROOMS_DATA_PATH}/${safeRoom}/messages`).push({
         sender: currentUser,
+        senderUid: authUser.uid,
         type: "text",
         text: text,
         timestamp: firebase.database.ServerValue.TIMESTAMP
@@ -324,7 +502,7 @@ messageForm.addEventListener("submit", (e) => {
     });
 });
 
-// 4. إرسال صورة مضغوطة
+// 7. إرسال صورة مضغوطة
 imageBtn.addEventListener("click", () => {
     if (!currentRoom) {
         alert("اختر أو أنشئ غرفة أولاً.");
@@ -335,7 +513,7 @@ imageBtn.addEventListener("click", () => {
 
 imageInput.addEventListener("change", (e) => {
     const file = e.target.files[0];
-    if (!file || !currentRoom) return;
+    if (!file || !currentRoom || !authUser) return;
 
     const reader = new FileReader();
     reader.onload = (event) => {
@@ -355,6 +533,7 @@ imageInput.addEventListener("change", (e) => {
 
             db.ref(`${DB_ROOMS_DATA_PATH}/${safeRoom}/messages`).push({
                 sender: currentUser,
+                senderUid: authUser.uid,
                 type: "image",
                 imageUrl: compressedBase64,
                 timestamp: firebase.database.ServerValue.TIMESTAMP
@@ -366,7 +545,7 @@ imageInput.addEventListener("change", (e) => {
     imageInput.value = "";
 });
 
-// 5. تسجيل وإرسال رسالة صوتية
+// 8. تسجيل وإرسال رسالة صوتية
 micBtn.addEventListener("click", async () => {
     if (!currentRoom && !isRecording) {
         alert("اختر أو أنشئ غرفة أولاً.");
@@ -401,9 +580,11 @@ micBtn.addEventListener("click", async () => {
 
                 const reader = new FileReader();
                 reader.onloadend = () => {
+                    if (!currentRoom || !authUser) return;
                     const safeRoom = sanitizeRoomKey(currentRoom);
                     db.ref(`${DB_ROOMS_DATA_PATH}/${safeRoom}/messages`).push({
                         sender: currentUser,
+                        senderUid: authUser.uid,
                         type: "audio",
                         audioUrl: reader.result,
                         timestamp: firebase.database.ServerValue.TIMESTAMP
@@ -431,7 +612,7 @@ micBtn.addEventListener("click", async () => {
     }
 });
 
-// 6. استقبال وحذف الرسائل
+// 9. استقبال وحذف الرسائل
 function listenForRoomMessages(roomName) {
     const safeRoom = sanitizeRoomKey(roomName);
     activeMessagesRef = db.ref(`${DB_ROOMS_DATA_PATH}/${safeRoom}/messages`);
@@ -466,7 +647,7 @@ function displayMessage(msgId, data) {
 
     renderedMessageIds.add(msgId);
 
-    const isMine = data.sender === currentUser;
+    const isMine = authUser ? data.senderUid === authUser.uid : data.sender === currentUser;
     const msgDiv = document.createElement("div");
     msgDiv.id = `msg-${msgId}`;
     msgDiv.classList.add("message", isMine ? "mine" : "other");
@@ -518,7 +699,7 @@ function deleteMessage(msgId) {
     db.ref(`${DB_ROOMS_DATA_PATH}/${safeRoom}/messages/${msgId}`).remove();
 }
 
-// 7. صوت التنبيه والواجهة
+// 10. صوت التنبيه والواجهة وتسجيل الخروج
 function playNotificationSound() {
     try {
         const AudioCtx = window.AudioContext || window.webkitAudioContext;
@@ -564,13 +745,8 @@ if (localStorage.getItem("chat_theme") === "dark") {
     document.body.classList.add("dark-mode");
 }
 
-logoutBtn.addEventListener("click", () => {
-    if (currentUser && currentRoom) {
-        const safeRoom = sanitizeRoomKey(currentRoom);
-        db.ref(`${DB_ROOMS_DATA_PATH}/${safeRoom}/online_users/${currentUser}`).set(null);
-    }
+logoutBtn.addEventListener("click", async () => {
+    cleanupRoomListeners();
     sessionStorage.clear();
-    localStorage.removeItem(STORAGE_USER_KEY);
-    localStorage.removeItem(STORAGE_ROOM_KEY);
-    location.reload();
+    await auth.signOut();
 });
