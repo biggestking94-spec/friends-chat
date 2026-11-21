@@ -12,15 +12,27 @@ firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
 const db = firebase.database();
 
-const DB_USERS_PATH = "v2_users";
-const DB_ROOMS_META_PATH = "v2_rooms_meta";
-const DB_ROOMS_DATA_PATH = "v2_rooms";
+const USERS_PATH = "wa_users";
+const ROOMS_PATH = "wa_rooms";
+const DM_PATH = "wa_dm_messages";
 
-// شاشات وعناصر المصادقة واسم المستخدم
+// أيقونات SVG داخلية للاستخدام في العناصر الديناميكية
+const SVG_ICONS = {
+    lock: `<svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z"/></svg>`,
+    trash: `<svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>`,
+    key: `<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M12.65 10C11.83 7.67 9.61 6 7 6c-3.31 0-6 2.69-6 6s2.69 6 6 6c2.61 0 4.83-1.67 5.65-4H17v4h4v-4h2v-4H12.65zM7 14c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2z"/></svg>`,
+    bellOn: `<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.63-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.64 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"/></svg>`,
+    bellOff: `<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M20 18.69L7.84 6.14 5.27 3.49 4 4.76l2.8 2.8v.01c-.52.99-.8 2.16-.8 3.42v5l-2 2v1h13.73l2 2L21 19.72l-1-1.03zM12 22c1.11 0 2-.89 2-2h-4c0 1.11.89 2 2 2zm6-7.32V11c0-3.08-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68c-.15.03-.29.08-.42.12-.1.03-.2.07-.3.11h-.01c-.01 0-.01 0-.02.01-.23.09-.46.2-.68.31 0 0-.01 0-.01.01L18 14.68z"/></svg>`,
+    mic: `<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.91-3c-.49 0-.9.36-.98.85C16.52 14.2 14.47 16 12 16s-4.52-1.8-4.93-4.15c-.08-.49-.49-.85-.98-.85-.61 0-1.09.54-1 1.14.49 3 2.89 5.35 5.91 5.78V20c0 .55.45 1 1 1s1-.45 1-1v-2.08c3.02-.43 5.42-2.78 5.91-5.78.1-.6-.39-1.14-1-1.14z"/></svg>`,
+    stop: `<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M6 6h12v12H6z"/></svg>`
+};
+
+// الشاشات
 const authScreen = document.getElementById("auth-screen");
-const usernameScreen = document.getElementById("username-screen");
+const profileScreen = document.getElementById("profile-screen");
 const chatScreen = document.getElementById("chat-screen");
 
+// عناصر الدخول
 const authEmailInput = document.getElementById("auth-email");
 const authPasswordInput = document.getElementById("auth-password");
 const emailLoginBtn = document.getElementById("email-login-btn");
@@ -29,31 +41,40 @@ const googleLoginBtn = document.getElementById("google-login-btn");
 const githubLoginBtn = document.getElementById("github-login-btn");
 const authError = document.getElementById("auth-error");
 
+// عناصر الملف الشخصي
 const setupUsernameInput = document.getElementById("setup-username-input");
-const saveUsernameBtn = document.getElementById("save-username-btn");
-const editUsernameBtn = document.getElementById("edit-username-btn");
-const usernameError = document.getElementById("username-error");
+const setupPinInput = document.getElementById("setup-pin-input");
+const saveProfileBtn = document.getElementById("save-profile-btn");
+const editProfileBtn = document.getElementById("edit-profile-btn");
+const copyPinBtn = document.getElementById("copy-pin-btn");
+const profileError = document.getElementById("profile-error");
 
-// عناصر التطبيق الرئيسي
+// عناصر الواجهة
 const waApp = document.querySelector(".wa-app");
 const sidebarUsername = document.getElementById("sidebar-username");
 const userAvatar = document.getElementById("user-avatar");
-const currentRoomTitle = document.getElementById("current-room-title");
-const roomAvatar = document.getElementById("room-avatar");
-const backToRoomsBtn = document.getElementById("back-to-rooms-btn");
+const searchInput = document.getElementById("search-input");
 
-const roomsListEl = document.getElementById("rooms-list");
 const newRoomInput = document.getElementById("new-room-input");
 const newRoomPass = document.getElementById("new-room-pass");
 const addRoomBtn = document.getElementById("add-room-btn");
 
-const onlineUsersList = document.getElementById("online-users-list");
+const tabRoomsBtn = document.getElementById("tab-rooms-btn");
+const tabUsersBtn = document.getElementById("tab-users-btn");
+const roomsListEl = document.getElementById("rooms-list");
+const usersListEl = document.getElementById("users-list");
+
+const backToRoomsBtn = document.getElementById("back-to-rooms-btn");
+const chatAvatar = document.getElementById("chat-avatar");
+const currentChatTitle = document.getElementById("current-chat-title");
+const currentChatSubtitle = document.getElementById("current-chat-subtitle");
+
 const messagesContainer = document.getElementById("messages-container");
+const scrollBottomBtn = document.getElementById("scroll-bottom-btn");
 const messageForm = document.getElementById("message-form");
 const messageInput = document.getElementById("message-input");
 const imageBtn = document.getElementById("image-btn");
 const imageInput = document.getElementById("image-input");
-
 const micBtn = document.getElementById("mic-btn");
 const recordingIndicator = document.getElementById("recording-indicator");
 
@@ -62,62 +83,58 @@ const themeToggle = document.getElementById("theme-toggle");
 const logoutBtn = document.getElementById("logout-btn");
 
 let authUser = null;
-let currentUser = "";
-let currentRoom = "";
+let myProfile = { username: "", pin: "" };
+let activeChat = null;
+let activeMessagesRef = null;
+let usersCache = {};
+let roomsCache = {};
+let unreadChats = new Set();
+let searchQuery = "";
 let soundEnabled = true;
 let isSending = false;
 let initialLoadComplete = false;
-let appInitialized = false;
-const renderedMessageIds = new Set();
-let roomsMetaCache = {};
+const renderedIds = new Set();
 
-let activeMessagesRef = null;
-let activeOnlineRef = null;
-let activePresenceUserRef = null;
-
-// تسجيل صوتي
 let mediaRecorder = null;
 let audioChunks = [];
 let isRecording = false;
 
-function showScreen(screenEl) {
-    [authScreen, usernameScreen, chatScreen].forEach((s) => s.classList.remove("active"));
-    screenEl.classList.add("active");
+function showScreen(el) {
+    [authScreen, profileScreen, chatScreen].forEach((s) => s.classList.remove("active"));
+    el.classList.add("active");
 }
 
-function getAuthErrorMessage(err) {
+function getAuthError(err) {
     if (!err || !err.code) return "حدث خطأ غير متوقع.";
     switch (err.code) {
         case "auth/invalid-email":
-            return "صيغة البريد الإلكتروني غير صحيحة.";
+            return "البريد الإلكتروني غير صحيح.";
         case "auth/user-not-found":
         case "auth/wrong-password":
         case "auth/invalid-credential":
             return "البريد الإلكتروني أو كلمة المرور غير صحيحة.";
         case "auth/email-already-in-use":
-            return "هذا البريد الإلكتروني مسجل مسبقاً.";
+            return "هذا البريد الإلكتروني مستخدم بالفعل.";
         case "auth/weak-password":
             return "كلمة المرور يجب أن تكون 6 أحرف على الأقل.";
-        case "auth/popup-blocked":
-            return "تم حظر نافذة تسجيل الدخول، جرّب المتصفح مباشرة.";
         default:
-            return err.message || "تعذر إتمام تسجيل الدخول.";
+            return err.message || "تعذر تسجيل الدخول.";
     }
 }
 
-// 1. تسجيل الدخول بالبريد وكلمة المرور
+// المصادقة
 emailLoginBtn.addEventListener("click", async () => {
     authError.textContent = "";
     const email = authEmailInput.value.trim();
     const pass = authPasswordInput.value;
     if (!email || !pass) {
-        authError.textContent = "يرجى إدخال البريد الإلكتروني وكلمة المرور.";
+        authError.textContent = "أدخل البريد الإلكتروني وكلمة المرور.";
         return;
     }
     try {
         await auth.signInWithEmailAndPassword(email, pass);
     } catch (err) {
-        authError.textContent = getAuthErrorMessage(err);
+        authError.textContent = getAuthError(err);
     }
 });
 
@@ -126,18 +143,17 @@ emailSignupBtn.addEventListener("click", async () => {
     const email = authEmailInput.value.trim();
     const pass = authPasswordInput.value;
     if (!email || !pass) {
-        authError.textContent = "يرجى إدخال البريد الإلكتروني وكلمة المرور لإنشاء حساب.";
+        authError.textContent = "أدخل البريد الإلكتروني وكلمة المرور لإنشاء حساب.";
         return;
     }
     try {
         await auth.createUserWithEmailAndPassword(email, pass);
     } catch (err) {
-        authError.textContent = getAuthErrorMessage(err);
+        authError.textContent = getAuthError(err);
     }
 });
 
-// 2. المتابعة باستخدام Google أو GitHub
-async function signInWithProvider(provider) {
+async function signWithProvider(provider) {
     authError.textContent = "";
     try {
         await auth.signInWithPopup(provider);
@@ -145,344 +161,379 @@ async function signInWithProvider(provider) {
         if (err.code === "auth/popup-blocked" || err.code === "auth/operation-not-supported-in-this-environment") {
             await auth.signInWithRedirect(provider);
         } else {
-            authError.textContent = getAuthErrorMessage(err);
+            authError.textContent = getAuthError(err);
         }
     }
 }
 
-googleLoginBtn.addEventListener("click", () => {
-    const provider = new firebase.auth.GoogleAuthProvider();
-    signInWithProvider(provider);
-});
+googleLoginBtn.addEventListener("click", () => signWithProvider(new firebase.auth.GoogleAuthProvider()));
+githubLoginBtn.addEventListener("click", () => signWithProvider(new firebase.auth.GithubAuthProvider()));
 
-githubLoginBtn.addEventListener("click", () => {
-    const provider = new firebase.auth.GithubAuthProvider();
-    signInWithProvider(provider);
-});
-
-// مراقبة حالة المصادقة
 auth.onAuthStateChanged(async (user) => {
     if (!user) {
         authUser = null;
-        currentUser = "";
-        appInitialized = false;
-        cleanupRoomListeners();
+        myProfile = { username: "", pin: "" };
+        stopMessagesListener();
         showScreen(authScreen);
         return;
     }
 
     authUser = user;
-    const snap = await db.ref(`${DB_USERS_PATH}/${user.uid}/username`).once("value");
-    const savedUsername = snap.val();
+    const snap = await db.ref(`${USERS_PATH}/${user.uid}`).once("value");
+    const data = snap.val();
 
-    if (savedUsername) {
-        startChatSession(savedUsername);
+    if (data && data.username) {
+        myProfile = { username: data.username, pin: data.pin || "" };
+        openMainApp();
     } else {
         setupUsernameInput.value = user.displayName || "";
-        usernameError.textContent = "";
-        showScreen(usernameScreen);
+        setupPinInput.value = "";
+        profileError.textContent = "";
+        showScreen(profileScreen);
     }
 });
 
-// 3. حفظ / إضافة اسم المستخدم
-saveUsernameBtn.addEventListener("click", async () => {
+// حفظ الملف الشخصي
+saveProfileBtn.addEventListener("click", async () => {
     if (!authUser) return;
-    const name = setupUsernameInput.value.trim();
-    if (!name) {
-        usernameError.textContent = "يرجى كتابة اسم المستخدم أولاً.";
+    const username = setupUsernameInput.value.trim();
+    const pin = setupPinInput.value.trim();
+
+    if (!username) {
+        profileError.textContent = "يرجى كتابة اسم المستخدم.";
+        return;
+    }
+    if (!pin) {
+        profileError.textContent = "يرجى تحديد رمزك الخاص ليتمكن الآخرون من مراسلتك.";
         return;
     }
 
-    usernameError.textContent = "";
-    await db.ref(`${DB_USERS_PATH}/${authUser.uid}`).set({
-        username: name,
-        email: authUser.email || "",
+    profileError.textContent = "";
+    myProfile = { username, pin };
+
+    await db.ref(`${USERS_PATH}/${authUser.uid}`).set({
+        uid: authUser.uid,
+        username,
+        pin,
         updatedAt: firebase.database.ServerValue.TIMESTAMP
     });
 
-    startChatSession(name);
+    openMainApp();
 });
 
-editUsernameBtn.addEventListener("click", () => {
-    setupUsernameInput.value = currentUser;
-    usernameError.textContent = "";
-    showScreen(usernameScreen);
+editProfileBtn.addEventListener("click", () => {
+    setupUsernameInput.value = myProfile.username;
+    setupPinInput.value = myProfile.pin;
+    profileError.textContent = "";
+    showScreen(profileScreen);
 });
 
-function startChatSession(username) {
-    currentUser = username;
-    sidebarUsername.textContent = currentUser;
-    userAvatar.textContent = currentUser.charAt(0).toUpperCase() || "👤";
+copyPinBtn.addEventListener("click", async () => {
+    if (!myProfile.pin) return;
+    try {
+        await navigator.clipboard.writeText(myProfile.pin);
+        copyPinBtn.textContent = "تم النسخ ✓";
+        setTimeout(() => { copyPinBtn.textContent = "نسخ رمزي"; }, 1800);
+    } catch {
+        alert(`رمزك الخاص هو: ${myProfile.pin}`);
+    }
+});
+
+function openMainApp() {
+    sidebarUsername.textContent = myProfile.username;
+    userAvatar.textContent = myProfile.username.charAt(0).toUpperCase() || "U";
     showScreen(chatScreen);
 
-    if (window.innerWidth <= 768) {
+    if (window.innerWidth <= 768 && !activeChat) {
         waApp.classList.remove("chat-open");
     }
 
-    if (!appInitialized) {
-        appInitialized = true;
-        initRooms();
-    }
-
-    if (currentRoom && roomsMetaCache[currentRoom]) {
-        switchRoom(currentRoom, false);
-    } else {
-        currentRoom = "";
-        currentRoomTitle.textContent = "اختر أو أنشئ غرفة";
-        roomAvatar.textContent = "+";
-        onlineUsersList.innerHTML = "";
-        messagesContainer.innerHTML = "";
-    }
+    listenRooms();
+    listenUsers();
 }
+
+// البحث والتبويبات
+searchInput.addEventListener("input", () => {
+    searchQuery = searchInput.value.trim().toLowerCase();
+    renderRoomsList();
+    renderUsersList();
+});
+
+tabRoomsBtn.addEventListener("click", () => {
+    tabRoomsBtn.classList.add("active");
+    tabUsersBtn.classList.remove("active");
+    roomsListEl.classList.add("active");
+    usersListEl.classList.remove("active");
+});
+
+tabUsersBtn.addEventListener("click", () => {
+    tabUsersBtn.classList.add("active");
+    tabRoomsBtn.classList.remove("active");
+    usersListEl.classList.add("active");
+    roomsListEl.classList.remove("active");
+});
 
 backToRoomsBtn.addEventListener("click", () => {
     waApp.classList.remove("chat-open");
 });
 
-// 4. إدارة الغرف (إضافة + حذف لمن أنشأها فقط + رمز اختياري)
-function initRooms() {
-    const roomsRef = db.ref(DB_ROOMS_META_PATH);
-
-    roomsRef.on("value", (snapshot) => {
-        roomsListEl.innerHTML = "";
-        const data = snapshot.val() || {};
-        roomsMetaCache = {};
-
-        const entries = Object.entries(data);
-        if (entries.length === 0) {
-            roomsListEl.innerHTML = `<p style="padding: 16px; font-size: 13px; color: var(--text-muted); text-align: center;">لا توجد غرف حالياً. أضف غرفتك الأولى من الأعلى!</p>`;
-            if (currentRoom) {
-                currentRoom = "";
-                cleanupRoomListeners();
-                currentRoomTitle.textContent = "اختر أو أنشئ غرفة";
-                roomAvatar.textContent = "+";
-                onlineUsersList.innerHTML = "";
-                messagesContainer.innerHTML = "";
-            }
-            return;
-        }
-
-        entries.forEach(([key, roomObj]) => {
-            if (!roomObj || !roomObj.name) return;
-
-            roomsMetaCache[roomObj.name] = {
-                key,
-                name: roomObj.name,
-                password: roomObj.password || "",
-                createdBy: roomObj.createdBy || ""
-            };
-
-            const isLocked = Boolean(roomObj.password);
-            const canDeleteRoom = Boolean(authUser && roomObj.createdBy && roomObj.createdBy === authUser.uid);
-
-            const item = document.createElement("div");
-            item.className = "room-item" + (roomObj.name === currentRoom ? " active" : "");
-            item.dataset.roomName = roomObj.name;
-
-            item.innerHTML = `
-                <div class="room-item-left">
-                    <div class="room-avatar">${escapeHTML(roomObj.name.charAt(0))}</div>
-                    <span class="room-item-name">${escapeHTML(roomObj.name)}</span>
-                </div>
-                <div class="room-item-actions">
-                    <span>${isLocked ? "🔒" : ""}</span>
-                    ${canDeleteRoom ? `<button type="button" class="delete-room-btn" title="حذف الغرفة">🗑️</button>` : ""}
-                </div>
-            `;
-
-            item.addEventListener("click", () => {
-                attemptSwitchRoom(roomObj.name);
-            });
-
-            if (canDeleteRoom) {
-                const delRoomBtn = item.querySelector(".delete-room-btn");
-                if (delRoomBtn) {
-                    delRoomBtn.addEventListener("click", (e) => {
-                        e.stopPropagation();
-                        deleteRoom(key, roomObj.name, roomObj.createdBy);
-                    });
-                }
-            }
-
-            roomsListEl.appendChild(item);
-        });
-
-        if (currentRoom && !roomsMetaCache[currentRoom]) {
-            currentRoom = "";
-            cleanupRoomListeners();
-            currentRoomTitle.textContent = "اختر أو أنشئ غرفة";
-            roomAvatar.textContent = "+";
-            onlineUsersList.innerHTML = "";
-            messagesContainer.innerHTML = "";
-        }
-    });
-}
-
-addRoomBtn.addEventListener("click", createNewRoom);
+// إنشاء غرفة جديدة
+addRoomBtn.addEventListener("click", createRoom);
 newRoomInput.addEventListener("keydown", (e) => {
     if (e.key === "Enter") {
         e.preventDefault();
-        createNewRoom();
-    }
-});
-newRoomPass.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") {
-        e.preventDefault();
-        createNewRoom();
+        createRoom();
     }
 });
 
-function createNewRoom() {
+async function createRoom() {
     if (!authUser) return;
-    const roomName = newRoomInput.value.trim();
-    const roomPass = newRoomPass.value.trim();
-    if (!roomName) return;
+    const name = newRoomInput.value.trim();
+    const pass = newRoomPass.value.trim();
+    if (!name) return;
 
-    const safeKey = sanitizeRoomKey(roomName);
-    if (!safeKey) return;
+    const ref = db.ref(ROOMS_PATH).push();
+    await ref.set({
+        id: ref.key,
+        name,
+        password: pass,
+        ownerUid: authUser.uid,
+        ownerName: myProfile.username,
+        createdAt: firebase.database.ServerValue.TIMESTAMP
+    });
 
-    db.ref(`${DB_ROOMS_META_PATH}/${safeKey}`).set({
-        name: roomName,
-        password: roomPass,
-        createdBy: authUser.uid
-    }).then(() => {
-        if (roomPass) {
-            sessionStorage.setItem(`room_unlocked_${safeKey}`, "1");
-        }
-        newRoomInput.value = "";
-        newRoomPass.value = "";
-        switchRoom(roomName, true);
+    newRoomInput.value = "";
+    newRoomPass.value = "";
+
+    if (pass) {
+        sessionStorage.setItem(`room_ok_${ref.key}`, "1");
+    }
+
+    openRoomChat({ id: ref.key, name, password: pass, ownerUid: authUser.uid, ownerName: myProfile.username });
+}
+
+function listenRooms() {
+    db.ref(ROOMS_PATH).off();
+    db.ref(ROOMS_PATH).on("value", (snap) => {
+        roomsCache = snap.val() || {};
+        renderRoomsList();
     });
 }
 
-async function deleteRoom(safeKey, roomName, createdBy) {
-    if (!authUser || createdBy !== authUser.uid) {
-        alert("يمكن فقط لمن أنشأ هذه الغرفة حذفها.");
+function renderRoomsList() {
+    roomsListEl.innerHTML = "";
+    const list = Object.values(roomsCache).filter((r) =>
+        !searchQuery || (r.name && r.name.toLowerCase().includes(searchQuery))
+    );
+
+    if (list.length === 0) {
+        roomsListEl.innerHTML = `<p style="padding:16px;font-size:13px;color:var(--text-muted);text-align:center;">لا توجد غرف مطابقة. أنشئ غرفة جديدة من الأعلى.</p>`;
         return;
     }
 
-    const confirmed = confirm(`هل أنت متأكد من حذف الغرفة "${roomName}" وجميع رسائلها؟`);
-    if (!confirmed) return;
+    list.forEach((room) => {
+        const isOwner = authUser && room.ownerUid === authUser.uid;
+        const isActive = activeChat && activeChat.kind === "room" && activeChat.id === room.id;
+        const hasUnread = unreadChats.has(`room_${room.id}`);
 
-    if (currentRoom === roomName) {
-        currentRoom = "";
-        cleanupRoomListeners();
-        currentRoomTitle.textContent = "اختر أو أنشئ غرفة";
-        roomAvatar.textContent = "+";
-        onlineUsersList.innerHTML = "";
-        messagesContainer.innerHTML = "";
-        if (window.innerWidth <= 768) {
-            waApp.classList.remove("chat-open");
+        const item = document.createElement("div");
+        item.className = "list-item" + (isActive ? " active" : "");
+        item.innerHTML = `
+            <div class="list-item-left">
+                <div class="room-avatar">${escapeHTML(room.name.charAt(0))}</div>
+                <div>
+                    <div class="list-item-title">${escapeHTML(room.name)}</div>
+                    <small style="color:var(--text-muted)">${escapeHTML(room.ownerName || "")}</small>
+                </div>
+            </div>
+            <div class="list-item-right">
+                ${hasUnread ? `<span class="unread-dot"></span>` : ""}
+                ${room.password ? SVG_ICONS.lock : ""}
+                ${isOwner ? `<button type="button" class="delete-btn" title="حذف الغرفة">${SVG_ICONS.trash}</button>` : ""}
+            </div>
+        `;
+
+        item.addEventListener("click", () => {
+            if (room.password && !isOwner && sessionStorage.getItem(`room_ok_${room.id}`) !== "1") {
+                const code = prompt(`أدخل رمز الغرفة "${room.name}":`);
+                if (code === null) return;
+                if (code.trim() !== room.password) {
+                    alert("رمز الغرفة غير صحيح.");
+                    return;
+                }
+                sessionStorage.setItem(`room_ok_${room.id}`, "1");
+            }
+            unreadChats.delete(`room_${room.id}`);
+            openRoomChat(room);
+            renderRoomsList();
+        });
+
+        if (isOwner) {
+            const delBtn = item.querySelector(".delete-btn");
+            delBtn.addEventListener("click", async (e) => {
+                e.stopPropagation();
+                if (!confirm(`حذف الغرفة "${room.name}"؟`)) return;
+                if (activeChat && activeChat.kind === "room" && activeChat.id === room.id) {
+                    resetChatArea();
+                }
+                await db.ref(`${ROOMS_PATH}/${room.id}`).remove();
+            });
         }
-    }
 
-    await db.ref(`${DB_ROOMS_DATA_PATH}/${safeKey}`).remove();
-    await db.ref(`${DB_ROOMS_META_PATH}/${safeKey}`).remove();
+        roomsListEl.appendChild(item);
+    });
 }
 
-function sanitizeRoomKey(name) {
-    return name.replace(/[.#$/[\]]/g, "_").trim();
+function listenUsers() {
+    db.ref(USERS_PATH).off();
+    db.ref(USERS_PATH).on("value", (snap) => {
+        usersCache = snap.val() || {};
+        renderUsersList();
+    });
 }
 
-function attemptSwitchRoom(roomName) {
-    const meta = roomsMetaCache[roomName];
-    const requiredPass = meta ? (meta.password || "") : "";
-    const safeKey = sanitizeRoomKey(roomName);
+function renderUsersList() {
+    usersListEl.innerHTML = "";
+    const others = Object.values(usersCache).filter(
+        (u) => authUser && u.uid !== authUser.uid && u.username &&
+               (!searchQuery || u.username.toLowerCase().includes(searchQuery))
+    );
 
-    if (!requiredPass) {
-        switchRoom(roomName, true);
+    if (others.length === 0) {
+        usersListEl.innerHTML = `<p style="padding:16px;font-size:13px;color:var(--text-muted);text-align:center;">لا يوجد مستخدمون آخرون حالياً.</p>`;
         return;
     }
 
-    if (sessionStorage.getItem(`room_unlocked_${safeKey}`) === "1") {
-        switchRoom(roomName, true);
-        return;
-    }
+    others.forEach((user) => {
+        const dmId = getDmId(authUser.uid, user.uid);
+        const isActive = activeChat && activeChat.kind === "dm" && activeChat.id === dmId;
+        const hasUnread = unreadChats.has(`dm_${dmId}`);
 
-    const enteredPass = prompt(`الغرفة "${roomName}" محمية برمز سري. أدخل الرمز:`);
-    if (enteredPass === null) return;
+        const item = document.createElement("div");
+        item.className = "list-item" + (isActive ? " active" : "");
+        item.innerHTML = `
+            <div class="list-item-left">
+                <div class="avatar">${escapeHTML(user.username.charAt(0).toUpperCase())}</div>
+                <div>
+                    <div class="list-item-title">${escapeHTML(user.username)}</div>
+                    <small style="color:var(--text-muted)">محادثة خاصة برمز</small>
+                </div>
+            </div>
+            <div class="list-item-right">
+                ${hasUnread ? `<span class="unread-dot"></span>` : ""}
+                ${SVG_ICONS.key}
+            </div>
+        `;
 
-    if (enteredPass.trim() === requiredPass) {
-        sessionStorage.setItem(`room_unlocked_${safeKey}`, "1");
-        switchRoom(roomName, true);
-    } else {
-        alert("رمز الغرفة غير صحيح!");
-    }
+        item.addEventListener("click", () => {
+            const unlockedKey = `dm_unlocked_${user.uid}`;
+            if (user.pin && sessionStorage.getItem(unlockedKey) !== "1") {
+                const enteredPin = prompt(`لمراسلة ${user.username}، أدخل رمزه الخاص:`);
+                if (enteredPin === null) return;
+                if (enteredPin.trim() !== String(user.pin).trim()) {
+                    alert("الرمز الخاص غير صحيح!");
+                    return;
+                }
+                sessionStorage.setItem(unlockedKey, "1");
+            }
+            unreadChats.delete(`dm_${dmId}`);
+            openDmChat(user);
+            renderUsersList();
+        });
+
+        usersListEl.appendChild(item);
+    });
 }
 
-function cleanupRoomListeners() {
-    if (activePresenceUserRef) {
-        activePresenceUserRef.onDisconnect().cancel();
-        activePresenceUserRef.set(null);
-        activePresenceUserRef = null;
+function getDmId(uid1, uid2) {
+    return [uid1, uid2].sort().join("_");
+}
+
+function openRoomChat(room) {
+    activeChat = { kind: "room", id: room.id, title: room.name };
+    chatAvatar.textContent = room.name.charAt(0) || "#";
+    currentChatTitle.textContent = room.name;
+    currentChatSubtitle.textContent = `غرفة • ${room.ownerName || ""}`;
+
+    if (window.innerWidth <= 768) {
+        waApp.classList.add("chat-open");
     }
+
+    renderRoomsList();
+    startMessagesListener(`${ROOMS_PATH}/${room.id}/messages`);
+}
+
+function openDmChat(targetUser) {
+    const dmId = getDmId(authUser.uid, targetUser.uid);
+    activeChat = { kind: "dm", id: dmId, title: targetUser.username, targetUid: targetUser.uid };
+    chatAvatar.textContent = targetUser.username.charAt(0).toUpperCase() || "U";
+    currentChatTitle.textContent = targetUser.username;
+    currentChatSubtitle.textContent = "محادثة ثنائية خاصة بينكما فقط";
+
+    if (window.innerWidth <= 768) {
+        waApp.classList.add("chat-open");
+    }
+
+    renderUsersList();
+    startMessagesListener(`${DM_PATH}/${dmId}`);
+}
+
+function resetChatArea() {
+    activeChat = null;
+    stopMessagesListener();
+    currentChatTitle.textContent = "اختر غرفة أو مستخدماً";
+    currentChatSubtitle.textContent = "محادثاتك خاصة ومحمية";
+    messagesContainer.innerHTML = "";
+}
+
+function stopMessagesListener() {
     if (activeMessagesRef) {
         activeMessagesRef.off();
         activeMessagesRef = null;
     }
-    if (activeOnlineRef) {
-        activeOnlineRef.off();
-        activeOnlineRef = null;
-    }
 }
 
-function switchRoom(roomName, openPanelOnMobile = true) {
-    cleanupRoomListeners();
-
-    currentRoom = roomName;
-    currentRoomTitle.textContent = currentRoom;
-    roomAvatar.textContent = currentRoom.charAt(0) || "#";
-
-    document.querySelectorAll(".room-item").forEach((el) => {
-        el.classList.toggle("active", el.dataset.roomName === currentRoom);
-    });
-
-    if (openPanelOnMobile && window.innerWidth <= 768) {
-        waApp.classList.add("chat-open");
-    }
-
+function startMessagesListener(path) {
+    stopMessagesListener();
     messagesContainer.innerHTML = "";
-    renderedMessageIds.clear();
+    renderedIds.clear();
     initialLoadComplete = false;
 
-    setupRoomPresence(currentUser, currentRoom);
-    listenForRoomMessages(currentRoom);
-}
+    activeMessagesRef = db.ref(path);
+    setTimeout(() => { initialLoadComplete = true; }, 1200);
 
-// 5. المتصلون في الغرفة
-function setupRoomPresence(username, roomName) {
-    const safeRoom = sanitizeRoomKey(roomName);
-    const connectedRef = db.ref(".info/connected");
-    const userStatusRef = db.ref(`${DB_ROOMS_DATA_PATH}/${safeRoom}/online_users/${username}`);
-    activePresenceUserRef = userStatusRef;
+    activeMessagesRef.on("child_added", (snap) => {
+        const data = snap.val();
+        if (!data) return;
+        renderMessage(snap.key, data);
 
-    connectedRef.off();
-    connectedRef.on("value", (snap) => {
-        if (snap.val() === true && currentRoom === roomName) {
-            userStatusRef.onDisconnect().remove();
-            userStatusRef.set(true);
+        if (initialLoadComplete && data.senderUid !== authUser.uid && soundEnabled) {
+            playBeep();
         }
     });
 
-    activeOnlineRef = db.ref(`${DB_ROOMS_DATA_PATH}/${safeRoom}/online_users`);
-    activeOnlineRef.on("value", (snapshot) => {
-        onlineUsersList.innerHTML = "";
-        const users = snapshot.val();
-        if (users) {
-            Object.keys(users).forEach((user) => {
-                const badge = document.createElement("span");
-                badge.className = "online-badge";
-                badge.textContent = user;
-                onlineUsersList.appendChild(badge);
-            });
-        }
+    activeMessagesRef.on("child_removed", (snap) => {
+        const el = document.getElementById(`m-${snap.key}`);
+        if (el) el.remove();
     });
 }
 
-// 6. إرسال رسالة نصية
+function getCurrentMessagesPath() {
+    if (!activeChat) return null;
+    return activeChat.kind === "room"
+        ? `${ROOMS_PATH}/${activeChat.id}/messages`
+        : `${DM_PATH}/${activeChat.id}`;
+}
+
+// إرسال نص
 messageForm.addEventListener("submit", (e) => {
     e.preventDefault();
-    if (isSending || !currentRoom || !authUser) return;
+    if (isSending || !authUser) return;
+
+    if (!activeChat) {
+        alert("اختر غرفة أو مستخدماً أولاً لإرسال رسالة.");
+        return;
+    }
 
     const text = messageInput.value.trim();
     if (!text) return;
@@ -490,22 +541,21 @@ messageForm.addEventListener("submit", (e) => {
     isSending = true;
     messageInput.value = "";
 
-    const safeRoom = sanitizeRoomKey(currentRoom);
-    db.ref(`${DB_ROOMS_DATA_PATH}/${safeRoom}/messages`).push({
-        sender: currentUser,
+    db.ref(getCurrentMessagesPath()).push({
+        sender: myProfile.username,
         senderUid: authUser.uid,
         type: "text",
-        text: text,
+        text,
         timestamp: firebase.database.ServerValue.TIMESTAMP
     }).finally(() => {
         isSending = false;
     });
 });
 
-// 7. إرسال صورة مضغوطة
+// إرسال صورة
 imageBtn.addEventListener("click", () => {
-    if (!currentRoom) {
-        alert("اختر أو أنشئ غرفة أولاً.");
+    if (!activeChat) {
+        alert("اختر غرفة أو مستخدماً أولاً.");
         return;
     }
     imageInput.click();
@@ -513,220 +563,178 @@ imageBtn.addEventListener("click", () => {
 
 imageInput.addEventListener("change", (e) => {
     const file = e.target.files[0];
-    if (!file || !currentRoom || !authUser) return;
+    if (!file || !activeChat || !authUser) return;
 
     const reader = new FileReader();
-    reader.onload = (event) => {
+    reader.onload = (ev) => {
         const img = new Image();
         img.onload = () => {
             const canvas = document.createElement("canvas");
-            const MAX_WIDTH = 600;
-            const scaleSize = MAX_WIDTH / img.width;
-            canvas.width = img.width > MAX_WIDTH ? MAX_WIDTH : img.width;
-            canvas.height = img.width > MAX_WIDTH ? img.height * scaleSize : img.height;
+            const MAX_W = 600;
+            const scale = MAX_W / img.width;
+            canvas.width = img.width > MAX_W ? MAX_W : img.width;
+            canvas.height = img.width > MAX_W ? img.height * scale : img.height;
+            canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
 
-            const ctx = canvas.getContext("2d");
-            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-
-            const compressedBase64 = canvas.toDataURL("image/jpeg", 0.7);
-            const safeRoom = sanitizeRoomKey(currentRoom);
-
-            db.ref(`${DB_ROOMS_DATA_PATH}/${safeRoom}/messages`).push({
-                sender: currentUser,
+            db.ref(getCurrentMessagesPath()).push({
+                sender: myProfile.username,
                 senderUid: authUser.uid,
                 type: "image",
-                imageUrl: compressedBase64,
+                imageUrl: canvas.toDataURL("image/jpeg", 0.7),
                 timestamp: firebase.database.ServerValue.TIMESTAMP
             });
         };
-        img.src = event.target.result;
+        img.src = ev.target.result;
     };
     reader.readAsDataURL(file);
     imageInput.value = "";
 });
 
-// 8. تسجيل وإرسال رسالة صوتية
+// إرسال صوت
 micBtn.addEventListener("click", async () => {
-    if (!currentRoom && !isRecording) {
-        alert("اختر أو أنشئ غرفة أولاً.");
+    if (!activeChat && !isRecording) {
+        alert("اختر غرفة أو مستخدماً أولاً.");
         return;
     }
 
     if (!isRecording) {
         try {
-            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-                alert("المتصفح لا يدعم تسجيل الصوت هنا.");
-                return;
-            }
-
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
             audioChunks = [];
             mediaRecorder = new MediaRecorder(stream);
 
-            mediaRecorder.ondataavailable = (event) => {
-                if (event.data && event.data.size > 0) {
-                    audioChunks.push(event.data);
-                }
+            mediaRecorder.ondataavailable = (ev) => {
+                if (ev.data && ev.data.size > 0) audioChunks.push(ev.data);
             };
 
             mediaRecorder.onstop = () => {
-                stream.getTracks().forEach((track) => track.stop());
-                const audioBlob = new Blob(audioChunks, { type: mediaRecorder.mimeType || "audio/webm" });
-
-                if (audioBlob.size > 900 * 1024) {
-                    alert("الرسالة الصوتية طويلة جداً، جرّب تسجيلاً أقصر.");
+                stream.getTracks().forEach((t) => t.stop());
+                const blob = new Blob(audioChunks, { type: mediaRecorder.mimeType || "audio/webm" });
+                if (blob.size > 900 * 1024) {
+                    alert("التسجيل طويل جداً.");
                     return;
                 }
-
                 const reader = new FileReader();
                 reader.onloadend = () => {
-                    if (!currentRoom || !authUser) return;
-                    const safeRoom = sanitizeRoomKey(currentRoom);
-                    db.ref(`${DB_ROOMS_DATA_PATH}/${safeRoom}/messages`).push({
-                        sender: currentUser,
+                    if (!activeChat || !authUser) return;
+                    db.ref(getCurrentMessagesPath()).push({
+                        sender: myProfile.username,
                         senderUid: authUser.uid,
                         type: "audio",
                         audioUrl: reader.result,
                         timestamp: firebase.database.ServerValue.TIMESTAMP
                     });
                 };
-                reader.readAsDataURL(audioBlob);
+                reader.readAsDataURL(blob);
             };
 
             mediaRecorder.start();
             isRecording = true;
             micBtn.classList.add("recording");
-            micBtn.textContent = "⏹";
+            micBtn.innerHTML = SVG_ICONS.stop;
             recordingIndicator.hidden = false;
-        } catch (err) {
-            alert("تعذر الوصول إلى الميكروفون. تأكد من إعطاء صلاحية الميكروفون.");
+        } catch {
+            alert("تعذر الوصول للميكروفون.");
         }
     } else {
-        if (mediaRecorder && mediaRecorder.state !== "inactive") {
-            mediaRecorder.stop();
-        }
+        if (mediaRecorder && mediaRecorder.state !== "inactive") mediaRecorder.stop();
         isRecording = false;
         micBtn.classList.remove("recording");
-        micBtn.textContent = "🎤";
+        micBtn.innerHTML = SVG_ICONS.mic;
         recordingIndicator.hidden = true;
     }
 });
 
-// 9. استقبال وحذف الرسائل
-function listenForRoomMessages(roomName) {
-    const safeRoom = sanitizeRoomKey(roomName);
-    activeMessagesRef = db.ref(`${DB_ROOMS_DATA_PATH}/${safeRoom}/messages`);
+function renderMessage(id, data) {
+    if (!id || renderedIds.has(id) || document.getElementById(`m-${id}`)) return;
+    renderedIds.add(id);
 
-    setTimeout(() => { initialLoadComplete = true; }, 1500);
+    const isMine = authUser && data.senderUid === authUser.uid;
+    const div = document.createElement("div");
+    div.id = `m-${id}`;
+    div.className = "message " + (isMine ? "mine" : "other");
 
-    activeMessagesRef.on("child_added", (snapshot) => {
-        const data = snapshot.val();
-        if (!data) return;
-
-        displayMessage(snapshot.key, data);
-
-        if (initialLoadComplete && data.sender !== currentUser && soundEnabled) {
-            playNotificationSound();
-        }
-    });
-
-    activeMessagesRef.on("child_removed", (snapshot) => {
-        const msgId = snapshot.key;
-        renderedMessageIds.delete(msgId);
-        const msgElement = document.getElementById(`msg-${msgId}`);
-        if (msgElement) {
-            msgElement.remove();
-        }
-    });
-}
-
-function displayMessage(msgId, data) {
-    if (!msgId || renderedMessageIds.has(msgId) || document.getElementById(`msg-${msgId}`)) {
-        return;
-    }
-
-    renderedMessageIds.add(msgId);
-
-    const isMine = authUser ? data.senderUid === authUser.uid : data.sender === currentUser;
-    const msgDiv = document.createElement("div");
-    msgDiv.id = `msg-${msgId}`;
-    msgDiv.classList.add("message", isMine ? "mine" : "other");
-
-    let timeString = "";
-    if (data.timestamp) {
-        const date = new Date(data.timestamp);
-        timeString = date.toLocaleTimeString("ar-EG", { hour: "2-digit", minute: "2-digit" });
-    }
-
-    let contentHTML = "";
-    if (data.type === "image") {
-        contentHTML = `<img src="${data.imageUrl}" class="chat-image" onclick="window.open(this.src)" alt="صورة مرسلة">`;
-    } else if (data.type === "audio") {
-        contentHTML = `<audio controls src="${data.audioUrl}" class="chat-audio"></audio>`;
-    } else {
-        contentHTML = `<p>${escapeHTML(data.text || "")}</p>`;
-    }
-
-    const deleteBtnHTML = isMine
-        ? `<button type="button" class="delete-msg-btn" title="حذف الرسالة">🗑️</button>`
+    const time = data.timestamp
+        ? new Date(data.timestamp).toLocaleTimeString("ar-EG", { hour: "2-digit", minute: "2-digit" })
         : "";
 
-    msgDiv.innerHTML = `
+    let body = "";
+    if (data.type === "image") {
+        body = `<img src="${data.imageUrl}" class="chat-image" onclick="window.open(this.src)" alt="صورة">`;
+    } else if (data.type === "audio") {
+        body = `<audio controls src="${data.audioUrl}" class="chat-audio"></audio>`;
+    } else {
+        body = `<p>${escapeHTML(data.text || "")}</p>`;
+    }
+
+    div.innerHTML = `
         ${!isMine ? `<span class="msg-sender">${escapeHTML(data.sender || "")}</span>` : ""}
-        ${contentHTML}
+        ${body}
         <div class="msg-footer">
-            <span class="msg-time">${timeString}</span>
-            ${deleteBtnHTML}
+            <span class="msg-time">${time}</span>
+            ${isMine ? `<button type="button" class="delete-msg-btn" title="حذف">${SVG_ICONS.trash}</button>` : ""}
         </div>
     `;
 
     if (isMine) {
-        const delBtn = msgDiv.querySelector(".delete-msg-btn");
-        if (delBtn) {
-            delBtn.addEventListener("click", () => {
-                deleteMessage(msgId);
+        const del = div.querySelector(".delete-msg-btn");
+        if (del) {
+            del.addEventListener("click", () => {
+                const path = getCurrentMessagesPath();
+                if (path) db.ref(`${path}/${id}`).remove();
             });
         }
     }
 
-    messagesContainer.appendChild(msgDiv);
+    messagesContainer.appendChild(div);
     messagesContainer.scrollTop = messagesContainer.scrollHeight;
 }
 
-function deleteMessage(msgId) {
-    if (!msgId || !currentRoom) return;
-    const safeRoom = sanitizeRoomKey(currentRoom);
-    db.ref(`${DB_ROOMS_DATA_PATH}/${safeRoom}/messages/${msgId}`).remove();
-}
+// زر النزول لآخر رسالة
+messagesContainer.addEventListener("scroll", () => {
+    const distanceFromBottom = messagesContainer.scrollHeight - messagesContainer.scrollTop - messagesContainer.clientHeight;
+    scrollBottomBtn.hidden = distanceFromBottom < 140;
+});
 
-// 10. صوت التنبيه والواجهة وتسجيل الخروج
-function playNotificationSound() {
+scrollBottomBtn.addEventListener("click", () => {
+    messagesContainer.scrollTop = messagesContainer.scrollHeight;
+});
+
+function playBeep() {
     try {
-        const AudioCtx = window.AudioContext || window.webkitAudioContext;
-        if (!AudioCtx) return;
-
-        const ctx = new AudioCtx();
+        const Ctx = window.AudioContext || window.webkitAudioContext;
+        if (!Ctx) return;
+        const ctx = new Ctx();
         const osc = ctx.createOscillator();
         const gain = ctx.createGain();
-
         osc.type = "sine";
-        osc.frequency.setValueAtTime(587.33, ctx.currentTime);
-        osc.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.1);
-
-        gain.gain.setValueAtTime(0.15, ctx.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3);
-
+        osc.frequency.setValueAtTime(600, ctx.currentTime);
+        gain.gain.setValueAtTime(0.12, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.25);
         osc.connect(gain);
         gain.connect(ctx.destination);
-
         osc.start();
-        osc.stop(ctx.currentTime + 0.3);
-    } catch (e) {}
+        osc.stop(ctx.currentTime + 0.25);
+    } catch {}
 }
 
 soundToggle.addEventListener("click", () => {
     soundEnabled = !soundEnabled;
-    soundToggle.textContent = soundEnabled ? "🔔" : "🔕";
+    soundToggle.innerHTML = soundEnabled ? SVG_ICONS.bellOn : SVG_ICONS.bellOff;
+});
+
+themeToggle.addEventListener("click", () => {
+    document.body.classList.toggle("dark-mode");
+    localStorage.setItem("wa_theme", document.body.classList.contains("dark-mode") ? "dark" : "light");
+});
+
+if (localStorage.getItem("wa_theme") === "dark") {
+    document.body.classList.add("dark-mode");
+}
+
+logoutBtn.addEventListener("click", async () => {
+    sessionStorage.clear();
+    await auth.signOut();
 });
 
 function escapeHTML(str) {
@@ -734,19 +742,3 @@ function escapeHTML(str) {
     div.textContent = str;
     return div.innerHTML;
 }
-
-themeToggle.addEventListener("click", () => {
-    document.body.classList.toggle("dark-mode");
-    const isDark = document.body.classList.contains("dark-mode");
-    localStorage.setItem("chat_theme", isDark ? "dark" : "light");
-});
-
-if (localStorage.getItem("chat_theme") === "dark") {
-    document.body.classList.add("dark-mode");
-}
-
-logoutBtn.addEventListener("click", async () => {
-    cleanupRoomListeners();
-    sessionStorage.clear();
-    await auth.signOut();
-});
