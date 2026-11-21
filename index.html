@@ -3,15 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>مساحتنا الخاصة | دردشة الأصدقاء</title>
+    <title>واتساب الأصدقاء | غرف الدردشة</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
     <!-- شاشة تسجيل الدخول -->
     <div id="login-screen" class="screen active">
         <div class="login-card">
-            <h1>دردشة الأصدقاء 💬</h1>
-            <p>أدخل اسمك والرمز السري للدخول إلى المساحة الخاصة</p>
+            <div class="wa-logo">💬</div>
+            <h1>دردشة الأصدقاء</h1>
+            <p>سجّل اسمك والرمز السري للدخول إلى غرفكم الخاصة</p>
 
             <input type="text" id="username-input" placeholder="اكتب اسمك هنا..." autocomplete="off">
             <input type="password" id="room-code-input" placeholder="الرمز السري للدخول..." autocomplete="off">
@@ -21,52 +22,71 @@
         </div>
     </div>
 
-    <!-- شاشة الدردشة -->
+    <!-- شاشة التطبيق الرئيسية (أسلوب واتساب) -->
     <div id="chat-screen" class="screen">
-        <!-- رأس الدردشة -->
-        <header class="chat-header">
-            <div class="header-info">
-                <h2>غرفة الأصدقاء 💬</h2>
-                <span id="current-user-badge" class="user-badge">متصل كـ: ---</span>
-            </div>
+        <div class="wa-app">
+            <!-- القائمة الجانبية: الغرف -->
+            <aside id="sidebar" class="sidebar">
+                <header class="wa-header">
+                    <div class="user-profile">
+                        <div class="avatar" id="user-avatar">👤</div>
+                        <div>
+                            <h3 id="sidebar-username">---</h3>
+                            <span class="status-sub">غرف الدردشة</span>
+                        </div>
+                    </div>
 
-            <div class="header-actions">
-                <button type="button" id="sound-toggle" class="icon-btn" title="تفعيل/كتم الصوت">🔔</button>
-                <button type="button" id="theme-toggle" class="icon-btn" title="الوضع الليلي/النهاري">🌗</button>
-                <button type="button" id="logout-btn" class="logout-btn">خروج</button>
-            </div>
-        </header>
+                    <div class="header-actions">
+                        <button type="button" id="sound-toggle" class="icon-btn" title="تفعيل/كتم الصوت">🔔</button>
+                        <button type="button" id="theme-toggle" class="icon-btn" title="الوضع الليلي/النهاري">🌗</button>
+                        <button type="button" id="logout-btn" class="logout-btn" title="تسجيل خروج">خروج</button>
+                    </div>
+                </header>
 
-        <!-- شريط غرف المراسلة -->
-        <div class="rooms-bar">
-            <div id="rooms-list" class="rooms-list"></div>
-            <div class="add-room-box">
-                <input type="text" id="new-room-input" placeholder="اسم الغرفة..." autocomplete="off">
-                <input type="password" id="new-room-pass" placeholder="رمز الغرفة (اختياري)" autocomplete="off">
-                <button type="button" id="add-room-btn" title="إضافة غرفة">+</button>
-            </div>
+                <!-- إنشاء غرفة جديدة (برمز اختياري) -->
+                <div class="create-room-panel">
+                    <input type="text" id="new-room-input" placeholder="اسم غرفة جديدة..." autocomplete="off">
+                    <div class="create-room-row">
+                        <input type="password" id="new-room-pass" placeholder="رمز سري (اختياري)" autocomplete="off">
+                        <button type="button" id="add-room-btn">+ إنشاء</button>
+                    </div>
+                </div>
+
+                <!-- قائمة الغرف -->
+                <div id="rooms-list" class="rooms-list"></div>
+            </aside>
+
+            <!-- منطقة المحادثة النشطة -->
+            <section id="chat-panel" class="chat-panel">
+                <header class="wa-header chat-top-header">
+                    <div class="chat-room-info">
+                        <button type="button" id="back-to-rooms-btn" class="back-btn" title="العودة للغرف">➜</button>
+                        <div class="room-avatar" id="room-avatar">#</div>
+                        <div>
+                            <h3 id="current-room-title">عامة</h3>
+                            <div id="online-users-list" class="online-inline"></div>
+                        </div>
+                    </div>
+                </header>
+
+                <!-- الرسائل -->
+                <main id="messages-container" class="messages-container"></main>
+
+                <!-- شريط الإرسال (نص + صورة + تسجيل صوتي) -->
+                <form id="message-form" class="message-form">
+                    <button type="button" id="image-btn" class="media-btn" title="إرسال صورة">📷</button>
+                    <input type="file" id="image-input" accept="image/*" hidden>
+
+                    <button type="button" id="mic-btn" class="media-btn mic-btn" title="تسجيل رسالة صوتية">🎤</button>
+                    <span id="recording-indicator" class="recording-indicator" hidden>● جاري التسجيل...</span>
+
+                    <input type="text" id="message-input" placeholder="اكتب رسالة..." autocomplete="off">
+                    <button type="submit" id="send-btn" class="send-btn" title="إرسال">➤</button>
+                </form>
+            </section>
         </div>
-
-        <!-- شريط المتصلين حالياً -->
-        <div class="online-bar">
-            <span class="online-label">🟢 متصل الآن:</span>
-            <div id="online-users-list" class="online-users-list"></div>
-        </div>
-
-        <!-- منطقة الرسائل -->
-        <main id="messages-container" class="messages-container"></main>
-
-        <!-- شريط إرسال الرسائل والصور -->
-        <form id="message-form" class="message-form">
-            <button type="button" id="image-btn" class="image-btn" title="إرسال صورة">📷</button>
-            <input type="file" id="image-input" accept="image/*" hidden>
-
-            <input type="text" id="message-input" placeholder="اكتب رسالتك هنا..." autocomplete="off">
-            <button type="submit" id="send-btn" class="send-btn">إرسال ➤</button>
-        </form>
     </div>
 
-    <!-- مكتبات Firebase العادية -->
     <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
     <script src="main.js"></script>
