@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>مساحتنا الخاصة | دردشة الأصدقاء</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <!-- شاشة تسجيل الدخول -->
+    <div id="login-screen" class="screen active">
+        <div class="login-card">
+            <h2>مرحباً بك في شات الأصدقاء 🚀</h2>
+            <p>أدخل اسمك والرمز السري للمجموعة</p>
+            <input type="text" id="username-input" placeholder="اسمك المستعار..." required>
+            <input type="password" id="room-code-input" placeholder="الرمز السري للغرفة..." required>
+            <button id="join-btn">دخول المحادثة</button>
+            <p id="login-error" class="error-msg"></p>
+        </div>
+    </div>
+
+    <!-- شاشة الدردشة الرئيسية -->
+    <div id="chat-screen" class="screen">
+        <header class="chat-header">
+            <div class="header-info">
+                <h3>غرفة الأصدقاء 💬</h3>
+                <span id="current-user-badge"></span>
+            </div>
+            <div class="header-actions">
+                <button id="sound-toggle" title="تفعيل/كتم الصوت">🔔</button>
+                <button id="theme-toggle" title="تغيير المظهر">🌓</button>
+                <button id="logout-btn" title="خروج">خروج</button>
+            </div>
+        </header>
+
+        <!-- شريط الأصدقاء المتصلين حالياً -->
+        <div class="online-bar">
+            <span class="online-label">🟢 متصل الآن:</span>
+            <div id="online-users-list" class="online-list"></div>
+        </div>
+
+        <main id="messages-container" class="messages-area">
+            <!-- الرسائل والصور ستظهر هنا تلقائياً -->
+        </main>
+
+        <footer class="chat-input-area">
+            <form id="message-form">
+                <!-- زر مخفي لرفع الصور -->
+                <input type="file" id="image-input" accept="image/*" hidden>
+                <button type="button" id="image-btn" title="إرسال صورة">📷</button>
+                
+                <input type="text" id="message-input" placeholder="اكتب رسالتك هنا..." autocomplete="off">
+                <button type="submit" id="send-btn">إرسال ➤</button>
+            </form>
+        </footer>
+    </div>
+    <!-- مكتبات Firebase العادية (تعمل بدون مشاكل type="module") -->
+    <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
+    <script src="main.js"></script>
+</body>
+</html>
+
+    <script type="module" src="main.js"></script>
+</body>
+</html>
