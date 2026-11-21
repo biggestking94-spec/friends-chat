@@ -12,6 +12,7 @@ firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
 const SECRET_ROOM_CODE = "12345";
+const DEFAULT_ROOMS = ["عامة", "ألعاب", "ميمز"];
 
 const loginScreen = document.getElementById("login-screen");
 const chatScreen = document.getElementById("chat-screen");
@@ -20,6 +21,9 @@ const roomCodeInput = document.getElementById("room-code-input");
 const joinBtn = document.getElementById("join-btn");
 const loginError = document.getElementById("login-error");
 const currentUserBadge = document.getElementById("current-user-badge");
+const roomsListEl = document.getElementById("rooms-list");
+const newRoomInput = document.getElementById("new-room-input");
+const addRoomBtn = document.getElementById("add-room-btn");
 const onlineUsersList = document.getElementById("online-users-list");
 const messagesContainer = document.getElementById("messages-container");
 const messageForm = document.getElementById("message-form");
@@ -31,10 +35,16 @@ const themeToggle = document.getElementById("theme-toggle");
 const logoutBtn = document.getElementById("logout-btn");
 
 let currentUser = localStorage.getItem("chat_username") || "";
+let currentRoom = localStorage.getItem("chat_room") || "عامة";
 let soundEnabled = true;
-let isListening = false;
-let initialLoadComplete = false;
 let isSending = false;
+let initialLoadComplete = false;
+const renderedMessageIds = new Set();
+
+// مراجع المستمعين الحاليين لإيقافهم عند تغيير الغرفة
+let activeMessagesRef = null;
+let activeOnlineRef = null;
+let activePresenceUserRef = null;
 
 if (currentUser) {
     enterChat(currentUser);
@@ -59,26 +69,121 @@ joinBtn.addEventListener("click", () => {
 
 function enterChat(name) {
     currentUser = name;
-    currentUserBadge.textContent = `متصل كـ: ${currentUser}`;
+    currentUserBadge.textContent = `متصل كـ: ${currentUser} • غرفة: ${currentRoom}`;
     loginScreen.classList.remove("active");
     chatScreen.classList.add("active");
 
-    setupPresence(name);
-    listenForMessages();
+    initRooms();
+    switchRoom(currentRoom);
 }
 
-function setupPresence(username) {
-    const connectedRef = db.ref(".info/connected");
-    const userStatusRef = db.ref(`online_users/${username}`);
+// 1. إدارة قائمة الغرف وإنشاء غرفة جديدة
+function initRooms() {
+    const roomsRef = db.ref("rooms_meta");
 
+    // التأكد من وجود الغرف الافتراضية
+    DEFAULT_ROOMS.forEach((roomName) => {
+        roomsRef.child(sanitizeRoomKey(roomName)).once("value", (snap) => {
+            if (!snap.exists()) {
+                roomsRef.child(sanitizeRoomKey(roomName)).set({ name: roomName });
+            }
+        });
+    });
+
+    roomsRef.on("value", (snapshot) => {
+        roomsListEl.innerHTML = "";
+        const data = snapshot.val() || {};
+        const roomsArray = Object.values(data).map((r) => r.name).filter(Boolean);
+
+        roomsArray.forEach((roomName) => {
+            const btn = document.createElement("button");
+            btn.type = "button";
+            btn.className = "room-btn" + (roomName === currentRoom ? " active" : "");
+            btn.textContent = `# ${roomName}`;
+            btn.addEventListener("click", () => {
+                if (roomName !== currentRoom) {
+                    switchRoom(roomName);
+                }
+            });
+            roomsListEl.appendChild(btn);
+        });
+    });
+}
+
+addRoomBtn.addEventListener("click", createNewRoom);
+newRoomInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+        e.preventDefault();
+        createNewRoom();
+    }
+});
+
+function createNewRoom() {
+    const roomName = newRoomInput.value.trim();
+    if (!roomName) return;
+
+    const safeKey = sanitizeRoomKey(roomName);
+    if (!safeKey) return;
+
+    db.ref(`rooms_meta/${safeKey}`).set({ name: roomName }).then(() => {
+        newRoomInput.value = "";
+        switchRoom(roomName);
+    });
+}
+
+function sanitizeRoomKey(name) {
+    return name.replace(/[.#$/[\]]/g, "_").trim();
+}
+
+// 2. التبديل بين الغرف وتنظيف المستمعين السابقين
+function switchRoom(roomName) {
+    // إزالة حضور المستخدم من الغرفة السابقة
+    if (activePresenceUserRef) {
+        activePresenceUserRef.onDisconnect().cancel();
+        activePresenceUserRef.set(null);
+    }
+    if (activeMessagesRef) {
+        activeMessagesRef.off();
+    }
+    if (activeOnlineRef) {
+        activeOnlineRef.off();
+    }
+
+    currentRoom = roomName;
+    localStorage.setItem("chat_room", currentRoom);
+    currentUserBadge.textContent = `متصل كـ: ${currentUser} • غرفة: ${currentRoom}`;
+
+    // تحديث زر الغرفة النشطة
+    document.querySelectorAll(".room-btn").forEach((btn) => {
+        btn.classList.toggle("active", btn.textContent === `# ${currentRoom}`);
+    });
+
+    // تفريغ الرسائل المعروضة والبدء من جديد للغرفة المختارة
+    messagesContainer.innerHTML = "";
+    renderedMessageIds.clear();
+    initialLoadComplete = false;
+
+    setupRoomPresence(currentUser, currentRoom);
+    listenForRoomMessages(currentRoom);
+}
+
+// 3. المتصلون في الغرفة الحالية
+function setupRoomPresence(username, roomName) {
+    const safeRoom = sanitizeRoomKey(roomName);
+    const connectedRef = db.ref(".info/connected");
+    const userStatusRef = db.ref(`rooms/${safeRoom}/online_users/${username}`);
+    activePresenceUserRef = userStatusRef;
+
+    connectedRef.off();
     connectedRef.on("value", (snap) => {
-        if (snap.val() === true) {
+        if (snap.val() === true && currentRoom === roomName) {
             userStatusRef.onDisconnect().remove();
             userStatusRef.set(true);
         }
     });
 
-    db.ref("online_users").on("value", (snapshot) => {
+    activeOnlineRef = db.ref(`rooms/${safeRoom}/online_users`);
+    activeOnlineRef.on("value", (snapshot) => {
         onlineUsersList.innerHTML = "";
         const users = snapshot.val();
         if (users) {
@@ -92,6 +197,7 @@ function setupPresence(username) {
     });
 }
 
+// 4. إرسال رسالة نصية داخل الغرفة الحالية
 messageForm.addEventListener("submit", (e) => {
     e.preventDefault();
     if (isSending) return;
@@ -102,7 +208,8 @@ messageForm.addEventListener("submit", (e) => {
     isSending = true;
     messageInput.value = "";
 
-    db.ref("friends_chat").push({
+    const safeRoom = sanitizeRoomKey(currentRoom);
+    db.ref(`rooms/${safeRoom}/messages`).push({
         sender: currentUser,
         type: "text",
         text: text,
@@ -112,6 +219,7 @@ messageForm.addEventListener("submit", (e) => {
     });
 });
 
+// 5. اختيار وضغط وإرسال الصور داخل الغرفة الحالية
 imageBtn.addEventListener("click", () => imageInput.click());
 
 imageInput.addEventListener("change", (e) => {
@@ -132,8 +240,9 @@ imageInput.addEventListener("change", (e) => {
             ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
 
             const compressedBase64 = canvas.toDataURL("image/jpeg", 0.7);
+            const safeRoom = sanitizeRoomKey(currentRoom);
 
-            db.ref("friends_chat").push({
+            db.ref(`rooms/${safeRoom}/messages`).push({
                 sender: currentUser,
                 type: "image",
                 imageUrl: compressedBase64,
@@ -146,15 +255,17 @@ imageInput.addEventListener("change", (e) => {
     imageInput.value = "";
 });
 
-function listenForMessages() {
-    if (isListening) return;
-    isListening = true;
+// 6. استقبال وحذف الرسائل في الغرفة الحالية
+function listenForRoomMessages(roomName) {
+    const safeRoom = sanitizeRoomKey(roomName);
+    activeMessagesRef = db.ref(`rooms/${safeRoom}/messages`);
 
-    const messagesRef = db.ref("friends_chat");
     setTimeout(() => { initialLoadComplete = true; }, 1500);
 
-    messagesRef.on("child_added", (snapshot) => {
+    activeMessagesRef.on("child_added", (snapshot) => {
         const data = snapshot.val();
+        if (!data) return;
+
         displayMessage(snapshot.key, data);
 
         if (initialLoadComplete && data.sender !== currentUser && soundEnabled) {
@@ -162,8 +273,10 @@ function listenForMessages() {
         }
     });
 
-    messagesRef.on("child_removed", (snapshot) => {
-        const msgElement = document.getElementById(`msg-${snapshot.key}`);
+    activeMessagesRef.on("child_removed", (snapshot) => {
+        const msgId = snapshot.key;
+        renderedMessageIds.delete(msgId);
+        const msgElement = document.getElementById(`msg-${msgId}`);
         if (msgElement) {
             msgElement.remove();
         }
@@ -171,8 +284,11 @@ function listenForMessages() {
 }
 
 function displayMessage(msgId, data) {
-    // منع تكرار نفس الرسالة إذا كانت معروضة مسبقاً
-    if (!msgId || document.getElementById(`msg-${msgId}`)) return;
+    if (!msgId || renderedMessageIds.has(msgId) || document.getElementById(`msg-${msgId}`)) {
+        return;
+    }
+
+    renderedMessageIds.add(msgId);
 
     const isMine = data.sender === currentUser;
     const msgDiv = document.createElement("div");
@@ -189,7 +305,7 @@ function displayMessage(msgId, data) {
     if (data.type === "image") {
         contentHTML = `<img src="${data.imageUrl}" class="chat-image" onclick="window.open(this.src)" alt="صورة مرسلة">`;
     } else {
-        contentHTML = `<p>${escapeHTML(data.text)}</p>`;
+        contentHTML = `<p>${escapeHTML(data.text || "")}</p>`;
     }
 
     const deleteBtnHTML = isMine
@@ -197,7 +313,7 @@ function displayMessage(msgId, data) {
         : "";
 
     msgDiv.innerHTML = `
-        ${!isMine ? `<span class="msg-sender">${escapeHTML(data.sender)}</span>` : ""}
+        ${!isMine ? `<span class="msg-sender">${escapeHTML(data.sender || "")}</span>` : ""}
         ${contentHTML}
         <div class="msg-footer">
             <span class="msg-time">${timeString}</span>
@@ -207,9 +323,11 @@ function displayMessage(msgId, data) {
 
     if (isMine) {
         const delBtn = msgDiv.querySelector(".delete-msg-btn");
-        delBtn.addEventListener("click", () => {
-            deleteMessage(msgId);
-        });
+        if (delBtn) {
+            delBtn.addEventListener("click", () => {
+                deleteMessage(msgId);
+            });
+        }
     }
 
     messagesContainer.appendChild(msgDiv);
@@ -218,12 +336,16 @@ function displayMessage(msgId, data) {
 
 function deleteMessage(msgId) {
     if (!msgId) return;
-    db.ref(`friends_chat/${msgId}`).remove();
+    const safeRoom = sanitizeRoomKey(currentRoom);
+    db.ref(`rooms/${safeRoom}/messages/${msgId}`).remove();
 }
 
 function playNotificationSound() {
     try {
-        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (!AudioCtx) return;
+
+        const ctx = new AudioCtx();
         const osc = ctx.createOscillator();
         const gain = ctx.createGain();
 
@@ -264,8 +386,9 @@ if (localStorage.getItem("chat_theme") === "dark") {
 }
 
 logoutBtn.addEventListener("click", () => {
-    if (currentUser) {
-        db.ref(`online_users/${currentUser}`).set(null);
+    if (currentUser && currentRoom) {
+        const safeRoom = sanitizeRoomKey(currentRoom);
+        db.ref(`rooms/${safeRoom}/online_users/${currentUser}`).set(null);
     }
     localStorage.removeItem("chat_username");
     location.reload();
