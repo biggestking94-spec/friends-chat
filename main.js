@@ -15,6 +15,7 @@ const db = firebase.database();
 const USERS_PATH = "wa_users";
 const ROOMS_PATH = "wa_rooms";
 const DM_PATH = "wa_dm_messages";
+const DM_ACCESS_PATH = "wa_dm_access";
 
 const SVG_ICONS = {
     lock: `<svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z"/></svg>`,
@@ -58,6 +59,7 @@ const newRoomInput = document.getElementById("new-room-input");
 const newRoomPass = document.getElementById("new-room-pass");
 const createRoomBtn = document.getElementById("create-room-btn");
 const joinRoomBtn = document.getElementById("join-room-btn");
+const joinDmBtn = document.getElementById("join-dm-btn");
 
 const tabRoomsBtn = document.getElementById("tab-rooms-btn");
 const tabUsersBtn = document.getElementById("tab-users-btn");
@@ -88,6 +90,7 @@ let activeChat = null;
 let activeMessagesRef = null;
 let usersCache = {};
 let roomsCache = {};
+let dmAccessCache = {};
 let unreadChats = new Set();
 let searchQuery = "";
 let soundEnabled = true;
@@ -122,7 +125,6 @@ function getAuthError(err) {
     }
 }
 
-// طلب إذن الإشعارات للعمل حتى خارج الموقع
 async function requestNotificationPermission() {
     if (!("Notification" in window)) return;
     if (Notification.permission === "default") {
@@ -288,6 +290,7 @@ function openMainApp() {
     }
 
     listenRooms();
+    listenDmAccess();
     listenUsers();
 }
 
@@ -316,9 +319,10 @@ backToRoomsBtn.addEventListener("click", () => {
     waApp.classList.remove("chat-open");
 });
 
-// 1. إنشاء مجموعة جديدة وتسجيل المنشئ فيها
+// 1. إنشاء مجموعة جديدة
 createRoomBtn.addEventListener("click", createRoom);
 joinRoomBtn.addEventListener("click", joinExistingRoom);
+joinDmBtn.addEventListener("click", joinPrivateDm);
 
 newRoomInput.addEventListener("keydown", (e) => {
     if (e.key === "Enter") {
@@ -365,7 +369,7 @@ async function createRoom() {
     }
 }
 
-// 2. الدخول إلى مجموعة موجودة وتسجيل المستخدم كعضو فيها
+// 2. الدخول إلى مجموعة موجودة
 async function joinExistingRoom() {
     if (!authUser) return;
     const targetName = newRoomInput.value.trim();
@@ -411,6 +415,53 @@ async function joinExistingRoom() {
     }
 }
 
+// 3. الدخول إلى محادثة خاصة بإدخال اسم المستخدم ورمزه الخاص
+async function joinPrivateDm() {
+    if (!authUser) return;
+    const targetUsername = newRoomInput.value.trim();
+    const enteredPin = newRoomPass.value.trim();
+
+    if (!targetUsername || !enteredPin) {
+        alert("اكتب اسم المستخدم في الحقل الأول ورمزه الخاص في حقل الرمز.");
+        return;
+    }
+
+    try {
+        const snap = await db.ref(USERS_PATH).once("value");
+        const allUsers = snap.val() || {};
+        const targetUser = Object.values(allUsers).find(
+            (u) => u && u.username && u.username.trim().toLowerCase() === targetUsername.toLowerCase()
+        );
+
+        if (!targetUser) {
+            alert("لا يوجد مستخدم بهذا الاسم.");
+            return;
+        }
+
+        if (targetUser.uid === authUser.uid) {
+            alert("لا يمكنك فتح محادثة خاصة مع نفسك.");
+            return;
+        }
+
+        if (String(targetUser.pin || "").trim() !== enteredPin) {
+            alert("الرمز الخاص بالمستخدم غير صحيح!");
+            return;
+        }
+
+        const dmId = getDmId(authUser.uid, targetUser.uid);
+        await db.ref(`${DM_ACCESS_PATH}/${dmId}/${authUser.uid}`).set(true);
+        await db.ref(`${DM_ACCESS_PATH}/${dmId}/${targetUser.uid}`).set(true);
+
+        newRoomInput.value = "";
+        newRoomPass.value = "";
+
+        tabUsersBtn.click();
+        openDmChat(targetUser);
+    } catch (err) {
+        alert("تعذر الدخول إلى المحادثة: " + (err.message || err));
+    }
+}
+
 function listenRooms() {
     db.ref(ROOMS_PATH).off();
     db.ref(ROOMS_PATH).on("value", (snap) => {
@@ -421,7 +472,6 @@ function listenRooms() {
     });
 }
 
-// عرض المجموعات التي يكون المستخدم مسجلاً فيها فقط
 function renderRoomsList() {
     roomsListEl.innerHTML = "";
     const list = Object.values(roomsCache).filter((r) => {
@@ -432,7 +482,7 @@ function renderRoomsList() {
     });
 
     if (list.length === 0) {
-        roomsListEl.innerHTML = `<p style="padding:16px;font-size:13px;color:var(--text-muted);text-align:center;">لست مسجلاً في أي مجموعة بعد. أنشئ مجموعة أو ادخل إلى مجموعة من الأعلى.</p>`;
+        roomsListEl.innerHTML = `<p style="padding:16px;font-size:13px;color:var(--text-muted);text-align:center;">لست مسجلاً في أي مجموعة بعد.</p>`;
         if (activeChat && activeChat.kind === "room") {
             resetChatArea();
         }
@@ -483,6 +533,16 @@ function renderRoomsList() {
     });
 }
 
+function listenDmAccess() {
+    db.ref(DM_ACCESS_PATH).off();
+    db.ref(DM_ACCESS_PATH).on("value", (snap) => {
+        dmAccessCache = snap.val() || {};
+        renderUsersList();
+    }, (err) => {
+        console.error("DM access listener error:", err);
+    });
+}
+
 function listenUsers() {
     db.ref(USERS_PATH).off();
     db.ref(USERS_PATH).on("value", (snap) => {
@@ -493,19 +553,26 @@ function listenUsers() {
     });
 }
 
+// عرض المحادثات التي دخلها المستخدم فقط (بعد التحقق من الاسم والرمز)
 function renderUsersList() {
     usersListEl.innerHTML = "";
-    const others = Object.values(usersCache).filter(
-        (u) => authUser && u.uid !== authUser.uid && u.username &&
-               (!searchQuery || u.username.toLowerCase().includes(searchQuery))
-    );
+    const allowedUsers = Object.values(usersCache).filter((u) => {
+        if (!u || !u.uid || !u.username || !authUser || u.uid === authUser.uid) return false;
+        const dmId = getDmId(authUser.uid, u.uid);
+        const hasAccess = Boolean(dmAccessCache[dmId] && dmAccessCache[dmId][authUser.uid]);
+        if (!hasAccess) return false;
+        return !searchQuery || u.username.toLowerCase().includes(searchQuery);
+    });
 
-    if (others.length === 0) {
-        usersListEl.innerHTML = `<p style="padding:16px;font-size:13px;color:var(--text-muted);text-align:center;">لا توجد محادثات متاحة حالياً.</p>`;
+    if (allowedUsers.length === 0) {
+        usersListEl.innerHTML = `<p style="padding:16px;font-size:13px;color:var(--text-muted);text-align:center;">لا توجد محادثات مضافة بعد. أدخل اسم المستخدم والرمز الخاص واضغط "الدخول إلى محادثة".</p>`;
+        if (activeChat && activeChat.kind === "dm") {
+            resetChatArea();
+        }
         return;
     }
 
-    others.forEach((user) => {
+    allowedUsers.forEach((user) => {
         const dmId = getDmId(authUser.uid, user.uid);
         const isActive = activeChat && activeChat.kind === "dm" && activeChat.id === dmId;
         const hasUnread = unreadChats.has(`dm_${dmId}`);
@@ -517,29 +584,29 @@ function renderUsersList() {
                 <div class="avatar">${escapeHTML(user.username.charAt(0).toUpperCase())}</div>
                 <div>
                     <div class="list-item-title">${escapeHTML(user.username)}</div>
-                    <small style="color:var(--text-muted)">محادثة خاصة برمز</small>
+                    <small style="color:var(--text-muted)">محادثة خاصة</small>
                 </div>
             </div>
             <div class="list-item-right">
                 ${hasUnread ? `<span class="unread-dot"></span>` : ""}
-                ${SVG_ICONS.key}
+                <button type="button" class="delete-btn" title="إزالة المحادثة من قائمتي">${SVG_ICONS.trash}</button>
             </div>
         `;
 
         item.addEventListener("click", () => {
-            const unlockedKey = `dm_unlocked_${user.uid}`;
-            if (user.pin && sessionStorage.getItem(unlockedKey) !== "1") {
-                const enteredPin = prompt(`لمراسلة ${user.username}، أدخل رمزه الخاص:`);
-                if (enteredPin === null) return;
-                if (enteredPin.trim() !== String(user.pin).trim()) {
-                    alert("الرمز الخاص غير صحيح!");
-                    return;
-                }
-                sessionStorage.setItem(unlockedKey, "1");
-            }
             unreadChats.delete(`dm_${dmId}`);
             openDmChat(user);
             renderUsersList();
+        });
+
+        const removeDmBtn = item.querySelector(".delete-btn");
+        removeDmBtn.addEventListener("click", async (e) => {
+            e.stopPropagation();
+            if (!confirm(`إزالة المحادثة مع "${user.username}" من قائمتك؟`)) return;
+            if (activeChat && activeChat.kind === "dm" && activeChat.id === dmId) {
+                resetChatArea();
+            }
+            await db.ref(`${DM_ACCESS_PATH}/${dmId}/${authUser.uid}`).remove();
         });
 
         usersListEl.appendChild(item);
@@ -824,7 +891,6 @@ function renderMessage(id, data) {
     messagesContainer.scrollTop = messagesContainer.scrollHeight;
 }
 
-// زر النزول لآخر رسالة
 messagesContainer.addEventListener("scroll", () => {
     const distanceFromBottom = messagesContainer.scrollHeight - messagesContainer.scrollTop - messagesContainer.clientHeight;
     scrollBottomBtn.hidden = distanceFromBottom < 140;
