@@ -56,7 +56,8 @@ const searchInput = document.getElementById("search-input");
 
 const newRoomInput = document.getElementById("new-room-input");
 const newRoomPass = document.getElementById("new-room-pass");
-const addRoomBtn = document.getElementById("add-room-btn");
+const createRoomBtn = document.getElementById("create-room-btn");
+const joinRoomBtn = document.getElementById("join-room-btn");
 
 const tabRoomsBtn = document.getElementById("tab-rooms-btn");
 const tabUsersBtn = document.getElementById("tab-users-btn");
@@ -121,6 +122,36 @@ function getAuthError(err) {
     }
 }
 
+// طلب إذن الإشعارات للعمل حتى خارج الموقع
+async function requestNotificationPermission() {
+    if (!("Notification" in window)) return;
+    if (Notification.permission === "default") {
+        try {
+            await Notification.requestPermission();
+        } catch {}
+    }
+}
+
+function triggerIncomingAlert(title, body) {
+    if (soundEnabled) {
+        playBeep();
+    }
+    if (!soundEnabled || !("Notification" in window)) return;
+
+    if (Notification.permission === "granted" && (document.hidden || !document.hasFocus())) {
+        try {
+            const notif = new Notification(title, {
+                body: body || "رسالة جديدة",
+                silent: false
+            });
+            notif.onclick = () => {
+                window.focus();
+                notif.close();
+            };
+        } catch {}
+    }
+}
+
 // المصادقة
 emailLoginBtn.addEventListener("click", async () => {
     authError.textContent = "";
@@ -178,6 +209,8 @@ auth.onAuthStateChanged(async (user) => {
     }
 
     authUser = user;
+    requestNotificationPermission();
+
     try {
         const snap = await db.ref(`${USERS_PATH}/${user.uid}`).once("value");
         const data = snap.val();
@@ -283,8 +316,10 @@ backToRoomsBtn.addEventListener("click", () => {
     waApp.classList.remove("chat-open");
 });
 
-// إنشاء غرفة جديدة
-addRoomBtn.addEventListener("click", createRoom);
+// 1. إنشاء مجموعة جديدة وتسجيل المنشئ فيها
+createRoomBtn.addEventListener("click", createRoom);
+joinRoomBtn.addEventListener("click", joinExistingRoom);
+
 newRoomInput.addEventListener("keydown", (e) => {
     if (e.key === "Enter") {
         e.preventDefault();
@@ -296,7 +331,10 @@ async function createRoom() {
     if (!authUser) return;
     const name = newRoomInput.value.trim();
     const pass = newRoomPass.value.trim();
-    if (!name) return;
+    if (!name) {
+        alert("اكتب اسم المجموعة أولاً.");
+        return;
+    }
 
     try {
         const ref = db.ref(ROOMS_PATH).push();
@@ -306,6 +344,9 @@ async function createRoom() {
             password: pass,
             ownerUid: authUser.uid,
             ownerName: myProfile.username || authUser.email || "مستخدم",
+            members: {
+                [authUser.uid]: true
+            },
             createdAt: firebase.database.ServerValue.TIMESTAMP
         };
 
@@ -320,7 +361,53 @@ async function createRoom() {
 
         openRoomChat(roomData);
     } catch (err) {
-        alert("تعذر إنشاء الغرفة: " + (err.message || err));
+        alert("تعذر إنشاء المجموعة: " + (err.message || err));
+    }
+}
+
+// 2. الدخول إلى مجموعة موجودة وتسجيل المستخدم كعضو فيها
+async function joinExistingRoom() {
+    if (!authUser) return;
+    const targetName = newRoomInput.value.trim();
+    const enteredPass = newRoomPass.value.trim();
+
+    if (!targetName) {
+        alert("اكتب اسم المجموعة التي تريد الدخول إليها.");
+        return;
+    }
+
+    try {
+        const snap = await db.ref(ROOMS_PATH).once("value");
+        const allRooms = snap.val() || {};
+        const foundRoom = Object.values(allRooms).find(
+            (r) => r && r.name && r.name.trim().toLowerCase() === targetName.toLowerCase()
+        );
+
+        if (!foundRoom) {
+            alert("لا توجد مجموعة بهذا الاسم.");
+            return;
+        }
+
+        const isMember = Boolean(foundRoom.members && foundRoom.members[authUser.uid]);
+        if (foundRoom.password && !isMember && enteredPass !== foundRoom.password) {
+            alert("رمز المجموعة غير صحيح!");
+            return;
+        }
+
+        await db.ref(`${ROOMS_PATH}/${foundRoom.id}/members/${authUser.uid}`).set(true);
+        if (foundRoom.password) {
+            sessionStorage.setItem(`room_ok_${foundRoom.id}`, "1");
+        }
+
+        newRoomInput.value = "";
+        newRoomPass.value = "";
+
+        openRoomChat({
+            ...foundRoom,
+            members: { ...(foundRoom.members || {}), [authUser.uid]: true }
+        });
+    } catch (err) {
+        alert("تعذر الدخول إلى المجموعة: " + (err.message || err));
     }
 }
 
@@ -334,14 +421,21 @@ function listenRooms() {
     });
 }
 
+// عرض المجموعات التي يكون المستخدم مسجلاً فيها فقط
 function renderRoomsList() {
     roomsListEl.innerHTML = "";
-    const list = Object.values(roomsCache).filter((r) =>
-        !searchQuery || (r.name && r.name.toLowerCase().includes(searchQuery))
-    );
+    const list = Object.values(roomsCache).filter((r) => {
+        if (!r || !r.name || !authUser) return false;
+        const isMember = Boolean(r.members && r.members[authUser.uid]);
+        if (!isMember) return false;
+        return !searchQuery || r.name.toLowerCase().includes(searchQuery);
+    });
 
     if (list.length === 0) {
-        roomsListEl.innerHTML = `<p style="padding:16px;font-size:13px;color:var(--text-muted);text-align:center;">لا توجد غرف مطابقة. أنشئ غرفة جديدة من الأعلى.</p>`;
+        roomsListEl.innerHTML = `<p style="padding:16px;font-size:13px;color:var(--text-muted);text-align:center;">لست مسجلاً في أي مجموعة بعد. أنشئ مجموعة أو ادخل إلى مجموعة من الأعلى.</p>`;
+        if (activeChat && activeChat.kind === "room") {
+            resetChatArea();
+        }
         return;
     }
 
@@ -354,29 +448,20 @@ function renderRoomsList() {
         item.className = "list-item" + (isActive ? " active" : "");
         item.innerHTML = `
             <div class="list-item-left">
-                <div class="room-avatar">${escapeHTML((room.name || "#").charAt(0))}</div>
+                <div class="room-avatar">${escapeHTML(room.name.charAt(0))}</div>
                 <div>
-                    <div class="list-item-title">${escapeHTML(room.name || "غرفة")}</div>
+                    <div class="list-item-title">${escapeHTML(room.name)}</div>
                     <small style="color:var(--text-muted)">${escapeHTML(room.ownerName || "")}</small>
                 </div>
             </div>
             <div class="list-item-right">
                 ${hasUnread ? `<span class="unread-dot"></span>` : ""}
                 ${room.password ? SVG_ICONS.lock : ""}
-                ${isOwner ? `<button type="button" class="delete-btn" title="حذف الغرفة">${SVG_ICONS.trash}</button>` : ""}
+                ${isOwner ? `<button type="button" class="delete-btn" title="حذف المجموعة">${SVG_ICONS.trash}</button>` : ""}
             </div>
         `;
 
         item.addEventListener("click", () => {
-            if (room.password && !isOwner && sessionStorage.getItem(`room_ok_${room.id}`) !== "1") {
-                const code = prompt(`أدخل رمز الغرفة "${room.name}":`);
-                if (code === null) return;
-                if (code.trim() !== room.password) {
-                    alert("رمز الغرفة غير صحيح.");
-                    return;
-                }
-                sessionStorage.setItem(`room_ok_${room.id}`, "1");
-            }
             unreadChats.delete(`room_${room.id}`);
             openRoomChat(room);
             renderRoomsList();
@@ -386,7 +471,7 @@ function renderRoomsList() {
             const delBtn = item.querySelector(".delete-btn");
             delBtn.addEventListener("click", async (e) => {
                 e.stopPropagation();
-                if (!confirm(`حذف الغرفة "${room.name}"؟`)) return;
+                if (!confirm(`حذف المجموعة "${room.name}"؟`)) return;
                 if (activeChat && activeChat.kind === "room" && activeChat.id === room.id) {
                     resetChatArea();
                 }
@@ -416,7 +501,7 @@ function renderUsersList() {
     );
 
     if (others.length === 0) {
-        usersListEl.innerHTML = `<p style="padding:16px;font-size:13px;color:var(--text-muted);text-align:center;">لا يوجد مستخدمون آخرون حالياً.</p>`;
+        usersListEl.innerHTML = `<p style="padding:16px;font-size:13px;color:var(--text-muted);text-align:center;">لا توجد محادثات متاحة حالياً.</p>`;
         return;
     }
 
@@ -468,8 +553,8 @@ function getDmId(uid1, uid2) {
 function openRoomChat(room) {
     activeChat = { kind: "room", id: room.id, title: room.name };
     chatAvatar.textContent = (room.name || "#").charAt(0);
-    currentChatTitle.textContent = room.name || "غرفة";
-    currentChatSubtitle.textContent = `غرفة • ${room.ownerName || ""}`;
+    currentChatTitle.textContent = room.name || "مجموعة";
+    currentChatSubtitle.textContent = `مجموعة • ${room.ownerName || ""}`;
 
     if (window.innerWidth <= 768) {
         waApp.classList.add("chat-open");
@@ -497,7 +582,7 @@ function openDmChat(targetUser) {
 function resetChatArea() {
     activeChat = null;
     stopMessagesListener();
-    currentChatTitle.textContent = "اختر غرفة أو مستخدماً";
+    currentChatTitle.textContent = "اختر مجموعة أو محادثة";
     currentChatSubtitle.textContent = "محادثاتك خاصة ومحمية";
     messagesContainer.innerHTML = "";
 }
@@ -523,8 +608,13 @@ function startMessagesListener(path) {
         if (!data) return;
         renderMessage(snap.key, data);
 
-        if (initialLoadComplete && data.senderUid !== authUser.uid && soundEnabled) {
-            playBeep();
+        if (initialLoadComplete && data.senderUid !== authUser.uid) {
+            const preview = data.type === "image"
+                ? "أرسل صورة"
+                : data.type === "audio"
+                    ? "أرسل رسالة صوتية"
+                    : (data.text || "رسالة جديدة");
+            triggerIncomingAlert(data.sender || "رسالة جديدة", preview);
         }
     }, (err) => {
         console.error("Messages listener error:", err);
@@ -543,7 +633,7 @@ function getCurrentMessagesPath() {
         : `${DM_PATH}/${activeChat.id}`;
 }
 
-// إرسال نص مع معالجة واضحة للأخطاء
+// إرسال نص
 messageForm.addEventListener("submit", async (e) => {
     e.preventDefault();
     if (isSending) return;
@@ -554,7 +644,7 @@ messageForm.addEventListener("submit", async (e) => {
     }
 
     if (!activeChat) {
-        alert("اختر غرفة أو مستخدماً أولاً لإرسال رسالة.");
+        alert("اختر مجموعة أو محادثة أولاً لإرسال رسالة.");
         return;
     }
 
@@ -578,7 +668,7 @@ messageForm.addEventListener("submit", async (e) => {
         });
     } catch (err) {
         messageInput.value = originalText;
-        alert("لم يتم إرسال الرسالة: " + (err.message || "تحقق من قواعد Realtime Database وصلاحيات الدخول"));
+        alert("لم يتم إرسال الرسالة: " + (err.message || err));
     } finally {
         isSending = false;
     }
@@ -587,7 +677,7 @@ messageForm.addEventListener("submit", async (e) => {
 // إرسال صورة
 imageBtn.addEventListener("click", () => {
     if (!activeChat) {
-        alert("اختر غرفة أو مستخدماً أولاً.");
+        alert("اختر مجموعة أو محادثة أولاً.");
         return;
     }
     imageInput.click();
@@ -632,7 +722,7 @@ imageInput.addEventListener("change", (e) => {
 // إرسال صوت
 micBtn.addEventListener("click", async () => {
     if (!activeChat && !isRecording) {
-        alert("اختر غرفة أو مستخدماً أولاً.");
+        alert("اختر مجموعة أو محادثة أولاً.");
         return;
     }
 
@@ -762,8 +852,11 @@ function playBeep() {
     } catch {}
 }
 
-soundToggle.addEventListener("click", () => {
+soundToggle.addEventListener("click", async () => {
     soundEnabled = !soundEnabled;
+    if (soundEnabled) {
+        await requestNotificationPermission();
+    }
     soundToggle.innerHTML = soundEnabled ? SVG_ICONS.bellOn : SVG_ICONS.bellOff;
 });
 

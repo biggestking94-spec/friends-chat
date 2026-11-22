@@ -1,7 +1,7 @@
 :root {
-    --wa-teal: #008069;
-    --wa-teal-dark: #005c4b;
-    --wa-light-green: #d9fdd3;
+    --wa-teal: #993333;
+    --wa-teal-dark: #752424;
+    --wa-light-green: #f7e6e6;
     --bg-app: #efeae2;
     --bg-sidebar: #ffffff;
     --bg-header: #f0f2f5;
@@ -11,13 +11,13 @@
     --border-color: #e9edef;
     --msg-other-bg: #ffffff;
     --hover-item: #f5f6f6;
-    --active-item: #f0f2f5;
+    --active-item: #f9ecec;
 }
 
 body.dark-mode {
-    --wa-teal: #00a884;
-    --wa-teal-dark: #007a60;
-    --wa-light-green: #005c4b;
+    --wa-teal: #993333;
+    --wa-teal-dark: #6e2222;
+    --wa-light-green: #4d1919;
     --bg-app: #0b141a;
     --bg-sidebar: #111b21;
     --bg-header: #202c33;
@@ -173,7 +173,7 @@ svg {
 }
 
 .sidebar {
-    width: 350px;
+    width: 355px;
     max-width: 100%;
     background-color: var(--bg-sidebar);
     border-left: 1px solid var(--border-color);
@@ -311,7 +311,7 @@ svg {
     outline: none;
 }
 
-/* إنشاء غرفة */
+/* إنشاء / الدخول إلى مجموعة */
 .create-box {
     padding: 10px 12px;
     border-bottom: 1px solid var(--border-color);
@@ -331,27 +331,34 @@ svg {
     outline: none;
 }
 
-.create-row {
+.group-action-btns {
     display: flex;
     gap: 8px;
 }
 
-.create-row input {
+.group-btn {
     flex: 1;
-}
-
-#add-room-btn {
-    background-color: var(--wa-teal);
-    color: #fff;
-    border: none;
-    padding: 0 12px;
+    padding: 8px 10px;
     border-radius: 8px;
-    font-size: 13px;
+    font-size: 12px;
     font-weight: bold;
     cursor: pointer;
     display: flex;
     align-items: center;
-    gap: 4px;
+    justify-content: center;
+    gap: 5px;
+    border: none;
+}
+
+.primary-group-btn {
+    background-color: var(--wa-teal);
+    color: #fff;
+}
+
+.secondary-group-btn {
+    background-color: var(--bg-header);
+    color: var(--text-main);
+    border: 1px solid var(--border-color);
 }
 
 .tabs-bar {
@@ -433,7 +440,7 @@ svg {
     width: 10px;
     height: 10px;
     border-radius: 50%;
-    background-color: #25d366;
+    background-color: var(--wa-teal);
     display: inline-block;
 }
 
